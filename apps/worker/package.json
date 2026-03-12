@@ -2,6 +2,7 @@
   "name": "@flight-tracker/worker",
   "version": "1.0.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "scrape": "ts-node -r tsconfig-paths/register src/index.ts",
     "scrape:dry": "DRY_RUN=1 ts-node -r tsconfig-paths/register src/index.ts",
@@ -18,6 +19,9 @@
     "@types/node": "^20.0.0",
     "@types/node-telegram-bot-api": "^0.64.0",
     "@types/pg": "^8.11.0",
+    "@typescript-eslint/eslint-plugin": "^8.57.0",
+    "@typescript-eslint/parser": "^8.57.0",
+    "eslint": "^10.0.3",
     "ts-node": "^10.9.2",
     "tsconfig-paths": "^4.2.0",
     "typescript": "^5.4.0"

@@ -3,7 +3,7 @@
 // Scrapes Qatar Airways Privilege Club award calendar for business class
 // availability. Falls back to Seats.aero API if SEATS_AERO_API_KEY is set.
 
-import { chromium, Browser, BrowserContext, Page } from "playwright";
+import { chromium, Browser, BrowserContext } from "playwright";
 import { CashMonitor, AwardMonitor, FlightResult } from "@flight-tracker/shared";
 import { ScrapeAdapter, sleep } from "./base";
 

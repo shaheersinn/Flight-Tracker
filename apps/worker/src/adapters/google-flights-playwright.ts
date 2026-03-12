@@ -3,16 +3,6 @@ import { chromium, Browser, BrowserContext, Page } from "playwright";
 import { CashMonitor, AwardMonitor, FlightResult } from "@flight-tracker/shared";
 import { ScrapeAdapter, sleep } from "./base";
 
-interface RawFlight {
-  price: string;
-  airline: string;
-  departure: string;
-  arrival: string;
-  duration: string;
-  stops: string;
-  flightNumber: string;
-}
-
 export class GoogleFlightsPlaywrightAdapter implements ScrapeAdapter {
   name = "Google Flights (Playwright)";
   private browser: Browser | null = null;
@@ -40,21 +30,9 @@ export class GoogleFlightsPlaywrightAdapter implements ScrapeAdapter {
     // Evade webdriver detection
     await this.context.addInitScript(() => {
       Object.defineProperty(navigator, "webdriver", { get: () => false });
-      // @ts-ignore
+      // @ts-expect-error -- window.chrome not typed in browser context
       window.chrome = { runtime: {} };
     });
-  }
-
-  private buildUrl(origin: string, destination: string, date: string): string {
-    // Google Flights URL format for one-way search
-    const d = date.replace(/-/g, "");
-    return (
-      `https://www.google.com/travel/flights/search?` +
-      `tfs=CBwQAhooagcIARIDWVlDEgoyMDI2LTA2LTI4cgcIARIDWVlaKAIyAjEwQAFIAXABmAEB&` +
-      `hl=en-CA&gl=ca&curr=CAD`
-    );
-    // Note: for production, construct the tfs parameter properly or use
-    // direct URL: https://www.google.com/travel/flights?q=Flights+from+{origin}+to+{destination}+on+{date}
   }
 
   private buildSearchUrl(
@@ -196,7 +174,7 @@ export class GoogleFlightsPlaywrightAdapter implements ScrapeAdapter {
     return results;
   }
 
-  async scrapeMonth(monitor: AwardMonitor): Promise<FlightResult[]> {
+  async scrapeMonth(_monitor: AwardMonitor): Promise<FlightResult[]> {
     // Google Flights Playwright is for cash fares; award scraping handled
     // by the Qatar Airways adapter. Return empty here.
     return [];
