@@ -79,10 +79,10 @@ export async function getQuoteHistory(
   return query<QuoteRow>(
     `SELECT * FROM quotes
      WHERE monitor_id = $1
-       AND checked_at > NOW() - INTERVAL '${days} days'
+       AND checked_at > NOW() - INTERVAL '1 day' * $2
        AND (total_price IS NOT NULL OR points_cost IS NOT NULL)
      ORDER BY checked_at ASC`,
-    [monitorId]
+    [monitorId, days]
   );
 }
 
