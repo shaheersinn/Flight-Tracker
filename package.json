@@ -10,7 +10,8 @@
     "worker:build": "npm run build --workspace=apps/worker",
     "web:dev": "npm run dev --workspace=apps/web",
     "web:build": "npm run build --workspace=apps/web",
-    "build": "npm run build --workspaces --if-present"
+    "build": "npm run build --workspaces --if-present",
+    "install:playwright": "npx playwright install chromium --with-deps"
   },
   "devDependencies": {
     "typescript": "^5.4.0"
