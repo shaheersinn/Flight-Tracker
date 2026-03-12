@@ -19,33 +19,35 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Node.js 20
-        uses: actions/setup-node@v4
+      # ── Python setup ──────────────────────────────────────────────────────
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
         with:
-          node-version: "20"
-          cache: "npm"
+          python-version: "3.11"
 
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Install Playwright Chromium
-        run: npx playwright install chromium --with-deps
+      - name: Install Python dependencies
         working-directory: apps/worker
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
 
+      - name: Install Playwright browsers
+        working-directory: apps/worker
+        run: python -m playwright install chromium --with-deps
+
+      # ── Run scraper ────────────────────────────────────────────────────────
       - name: Run flight scraper
-        run: npm run worker:scrape
+        working-directory: apps/worker
+        run: python scraper.py
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          # Optional — RapidAPI key (limited to 10 calls/month)
           RAPIDAPI_KEY: ${{ secrets.RAPIDAPI_KEY }}
-          # Optional — Seats.aero API for Qatar award availability
           SEATS_AERO_API_KEY: ${{ secrets.SEATS_AERO_API_KEY }}
-          # Set to "false" if your DB doesn't require SSL
           DATABASE_SSL: "true"
-          NODE_ENV: production
 
+      # ── Upload logs ────────────────────────────────────────────────────────
       - name: Upload scraper logs
         if: always()
         uses: actions/upload-artifact@v4
