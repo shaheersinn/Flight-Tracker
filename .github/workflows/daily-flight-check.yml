@@ -1,0 +1,56 @@
+name: Daily Flight Price Check
+
+on:
+  schedule:
+    # 11:17 UTC = 7:17 AM EDT / 6:17 AM EST
+    - cron: "17 11 * * *"
+  workflow_dispatch: # allow manual trigger from GitHub UI
+
+permissions:
+  contents: read
+
+jobs:
+  scrape-and-alert:
+    name: Scrape Flights & Send Alerts
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        run: npx playwright install chromium --with-deps
+        working-directory: apps/worker
+
+      - name: Run flight scraper
+        run: npm run worker:scrape
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          # Optional — RapidAPI key (limited to 10 calls/month)
+          RAPIDAPI_KEY: ${{ secrets.RAPIDAPI_KEY }}
+          # Optional — Seats.aero API for Qatar award availability
+          SEATS_AERO_API_KEY: ${{ secrets.SEATS_AERO_API_KEY }}
+          # Set to "false" if your DB doesn't require SSL
+          DATABASE_SSL: "true"
+          NODE_ENV: production
+
+      - name: Upload scraper logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scraper-logs-${{ github.run_id }}
+          path: apps/worker/logs/
+          retention-days: 7
+          if-no-files-found: ignore
