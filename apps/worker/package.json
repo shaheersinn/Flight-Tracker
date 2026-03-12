@@ -3,8 +3,8 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "scrape": "ts-node --esm src/index.ts",
-    "scrape:dry": "DRY_RUN=1 ts-node --esm src/index.ts",
+    "scrape": "ts-node -r tsconfig-paths/register src/index.ts",
+    "scrape:dry": "DRY_RUN=1 ts-node -r tsconfig-paths/register src/index.ts",
     "build": "tsc",
     "lint": "eslint src/**/*.ts"
   },
@@ -19,6 +19,7 @@
     "@types/node-telegram-bot-api": "^0.64.0",
     "@types/pg": "^8.11.0",
     "ts-node": "^10.9.2",
+    "tsconfig-paths": "^4.2.0",
     "typescript": "^5.4.0"
   }
 }
