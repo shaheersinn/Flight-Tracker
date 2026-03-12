@@ -1,0 +1,18 @@
+{
+  "name": "flight-tracker",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "worker:scrape": "npm run scrape --workspace=apps/worker",
+    "worker:build": "npm run build --workspace=apps/worker",
+    "web:dev": "npm run dev --workspace=apps/web",
+    "web:build": "npm run build --workspace=apps/web",
+    "build": "npm run build --workspaces --if-present"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0"
+  }
+}
