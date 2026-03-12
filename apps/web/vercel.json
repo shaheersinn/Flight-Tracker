@@ -1,0 +1,9 @@
+{
+  "buildCommand": "cd ../.. && npm run web:build",
+  "outputDirectory": ".next",
+  "installCommand": "cd ../.. && npm ci",
+  "framework": "nextjs",
+  "env": {
+    "DATABASE_URL": "@database-url"
+  }
+}
