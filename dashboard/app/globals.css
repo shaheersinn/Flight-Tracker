@@ -1,69 +1,172 @@
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=DM+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400;1,500&family=Cormorant:ital,wght@0,400;0,600;1,400&family=EB+Garamond:ital,wght@0,400;0,500;1,400&display=swap');
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
-  --bg0: #07090f;
-  --bg1: #0c0f1d;
-  --bg2: #111629;
-  --bg3: #192035;
-  --bg4: #1f2840;
-  --accent: #3b82f6;
-  --accent2: #60a5fa;
-  --green: #10b981;
-  --red: #f43f5e;
-  --amber: #f59e0b;
-  --purple: #a78bfa;
-  --text1: #e8edf8;
-  --text2: #7f8fbb;
-  --text3: #3d4d70;
-  --border: rgba(255,255,255,0.06);
-  --border-hover: rgba(59,130,246,0.3);
+  /* Parchment palette */
+  --bg0:    #FBF7F0;   /* page base — warm cream */
+  --bg1:    #F7F2E8;   /* hero / sidebar */
+  --bg2:    #F2EBD9;   /* card surface */
+  --bg3:    #EDE3CC;   /* card hover / inset */
+  --bg4:    #E4D7BA;   /* strong border */
+
+  /* Gold palette */
+  --gold:   #A8782A;
+  --gold2:  #C8952E;
+  --gold3:  #D4A84B;
+  --gold-pale: rgba(168,120,42,0.12);
+  --gold-rule: rgba(168,120,42,0.35);
+
+  /* Text */
+  --ink0:   #2C2318;   /* headline */
+  --ink1:   #4A3B28;   /* body */
+  --ink2:   #7A6347;   /* muted */
+  --ink3:   #B8A080;   /* faint */
+
+  /* Status */
+  --green:  #3D7A4A;
+  --red:    #8B3030;
+  --amber:  #8B6B1A;
+
+  /* Border */
+  --border:       rgba(168,120,42,0.15);
+  --border-hover: rgba(168,120,42,0.40);
+
+  /* Noise texture as SVG data-URI (subtle grain) */
+  --noise: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
 }
 
 html { background: var(--bg0); }
+
 body {
-  background: var(--bg0);
-  color: var(--text1);
-  font-family: 'DM Sans', system-ui, sans-serif;
+  background-color: var(--bg0);
+  background-image: var(--noise);
+  background-repeat: repeat;
+  color: var(--ink1);
+  font-family: 'EB Garamond', 'Cormorant Garamond', Georgia, serif;
+  font-size: 16px;
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
-/* Subtle grid background */
-body::before {
-  content: '';
-  position: fixed;
-  inset: 0;
-  background-image:
-    linear-gradient(rgba(59,130,246,0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(59,130,246,0.03) 1px, transparent 1px);
-  background-size: 40px 40px;
-  pointer-events: none;
-  z-index: 0;
+/* ── Display type ── */
+h1, h2, h3, .display {
+  font-family: 'Cormorant Garamond', Georgia, serif;
+  font-weight: 600;
+  color: var(--ink0);
+  letter-spacing: 0.01em;
 }
 
-main { position: relative; z-index: 1; }
+.mono {
+  font-family: 'Cormorant Garamond', Georgia, serif;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
 
+/* ── Card ── */
 .card {
   background: var(--bg2);
+  background-image: var(--noise);
   border: 1px solid var(--border);
-  border-radius: 14px;
-  transition: border-color 0.18s, box-shadow 0.18s;
+  border-radius: 4px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  box-shadow: 0 1px 3px rgba(60,40,10,0.06), 0 0 0 0 transparent;
 }
 .card:hover {
   border-color: var(--border-hover);
-  box-shadow: 0 0 28px rgba(59,130,246,0.08);
+  box-shadow: 0 2px 12px rgba(168,120,42,0.1);
 }
 
-.mono { font-family: 'DM Mono', monospace; }
+/* Gold top-edge rule on cards */
+.card-gold-rule {
+  position: relative;
+  overflow: hidden;
+}
+.card-gold-rule::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--gold), var(--gold2), transparent);
+}
 
+/* ── Badge ── */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 10px;
+  border-radius: 2px;
+  font-size: 11px;
+  font-family: 'Cormorant Garamond', Georgia, serif;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border: 1px solid currentColor;
+}
+
+/* ── Gold rule divider ── */
+.gold-rule {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--gold-rule), transparent);
+  border: none;
+  margin: 0;
+}
+
+/* ── Diamond ornament ── */
+.ornament::before {
+  content: '◆';
+  color: var(--gold3);
+  font-size: 8px;
+  vertical-align: middle;
+  margin: 0 8px;
+  opacity: 0.7;
+}
+
+/* ── Scrollbar ── */
 ::-webkit-scrollbar { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track { background: var(--bg1); }
-::-webkit-scrollbar-thumb { background: var(--bg4); border-radius: 3px; }
+::-webkit-scrollbar-thumb { background: var(--bg4); border-radius: 2px; }
 
-.badge {
-  display: inline-flex; align-items: center; gap: 4px;
-  padding: 2px 8px; border-radius: 20px;
-  font-size: 11px; font-weight: 600;
+/* ── Nav link hover ── */
+.nav-link { transition: color 0.15s; color: var(--ink2); }
+.nav-link:hover { color: var(--gold); }
+
+/* ── Price gold ── */
+.price-gold { color: var(--gold); }
+.price-low  { color: var(--green); }
+.price-high { color: var(--red); }
+
+/* ── Gradient button ── */
+.btn-gold {
+  background: linear-gradient(135deg, var(--gold), var(--gold2));
+  color: var(--bg0);
+  border: none;
+  padding: 6px 18px;
+  border-radius: 2px;
+  font-family: 'Cormorant Garamond', serif;
+  font-weight: 600;
+  font-size: 13px;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  transition: opacity 0.15s;
 }
+.btn-gold:hover { opacity: 0.88; }
+
+/* ── Watermark ── */
+.watermark {
+  position: absolute;
+  font-size: 120px;
+  color: var(--gold);
+  opacity: 0.04;
+  font-family: 'Cormorant Garamond', serif;
+  user-select: none;
+  pointer-events: none;
+  line-height: 1;
+}
+
+/* ── Table ── */
+table { border-collapse: collapse; }
+th { font-family: 'Cormorant Garamond', serif; font-weight: 600; letter-spacing: 0.06em; }
+tr { border-bottom: 1px solid var(--border); }

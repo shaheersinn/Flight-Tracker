@@ -8,39 +8,67 @@ export const metadata: Metadata = {
 };
 
 const NAV = [
-  { href: "/",        label: "Dashboard" },
-  { href: "/awards",  label: "Awards"    },
-  { href: "/alerts",  label: "Alerts"    },
-  { href: "/runs",    label: "Runs"      },
+  { href: "/",       label: "Dashboard" },
+  { href: "/awards", label: "Awards"    },
+  { href: "/alerts", label: "Alerts"    },
+  { href: "/runs",   label: "Runs"      },
 ];
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
       <body>
+        {/* ── Navigation bar ────────────────────────────────────── */}
         <nav style={{
-          background: "rgba(7,9,15,0.85)",
+          background: "var(--bg1)",
+          backgroundImage: "var(--noise)",
           borderBottom: "1px solid var(--border)",
-          backdropFilter: "blur(14px)",
           position: "sticky", top: 0, zIndex: 50,
         }}>
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 flex items-center justify-between h-14">
-            <Link href="/" className="flex items-center gap-2 font-semibold text-sm"
-              style={{ color: "var(--text1)" }}>
-              <span className="text-lg">✈</span> FlightTracker
+          {/* Gold hairline at very top */}
+          <div style={{ height: 2, background: "linear-gradient(90deg, var(--gold), var(--gold2), transparent)" }} />
+
+          <div style={{ maxWidth: 1200, margin: "0 auto", padding: "0 24px",
+            display: "flex", alignItems: "center", justifyContent: "space-between", height: 52 }}>
+
+            <Link href="/" style={{ display: "flex", alignItems: "center", gap: 10,
+              textDecoration: "none", color: "var(--ink0)" }}>
+              <span style={{ fontSize: 18 }}>✈</span>
+              <span style={{ fontFamily: "'Cormorant Garamond', serif", fontWeight: 600,
+                fontSize: 18, letterSpacing: "0.04em", color: "var(--ink0)" }}>
+                FlightTracker
+              </span>
+              {/* Diamond ornament */}
+              <span style={{ color: "var(--gold3)", fontSize: 7, opacity: 0.8, marginLeft: 2 }}>◆</span>
             </Link>
-            <div className="flex items-center gap-5">
+
+            <div style={{ display: "flex", alignItems: "center", gap: 28 }}>
               {NAV.map(n => (
-                <Link key={n.href} href={n.href}
-                  className="text-sm transition-opacity hover:opacity-80"
-                  style={{ color: "var(--text2)" }}>
+                <Link key={n.href} href={n.href} className="nav-link"
+                  style={{ textDecoration: "none", fontSize: 14,
+                    fontFamily: "'Cormorant Garamond', serif", fontWeight: 500,
+                    letterSpacing: "0.04em" }}>
                   {n.label}
                 </Link>
               ))}
             </div>
           </div>
         </nav>
-        <main className="max-w-7xl mx-auto px-4 sm:px-6 py-8">{children}</main>
+
+        <main style={{ maxWidth: 1200, margin: "0 auto", padding: "32px 24px" }}>
+          {children}
+        </main>
+
+        {/* Footer */}
+        <footer style={{ borderTop: "1px solid var(--border)", marginTop: 48,
+          padding: "20px 24px", textAlign: "center" }}>
+          <div style={{ height: 1, background: "linear-gradient(90deg, transparent, var(--gold-rule), transparent)",
+            marginBottom: 16 }} />
+          <p style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: 13,
+            color: "var(--ink3)", letterSpacing: "0.06em" }}>
+            FLIGHT TRACKER <span style={{ color: "var(--gold3)" }}>◆</span> YYC · YYZ · ISB · IST
+          </p>
+        </footer>
       </body>
     </html>
   );
