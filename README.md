@@ -1,61 +1,82 @@
-# ✈️ Flight Price Tracker
+# ✈ Flight Price Tracker
 
 Automated daily flight price monitoring with Telegram alerts and a Vercel dashboard.
 
-Monitors **YYC↔YYZ domestic routes** and **Qatar Airways award availability** from YYZ to Islamabad (ISB) and Istanbul (IST).
+- **Domestic cash fares**: YYC/YYZ routes via Google Flights + Kayak
+- **Qatar award availability**: Business Class (Qsuite) YYZ→ISB and YYZ→IST
+- **One Telegram message per day** — a condensed digest of all alerts
+- **RapidAPI budget control** — capped at 10 requests/month automatically
+- **ML price forecasting** — 7-day predictions with confidence scores
 
 ---
 
-## Features
+## Monitored Routes
 
-- **Daily automated scraping** via GitHub Actions (07:17 AM Toronto time)
-- **Multi-provider strategy**: RapidAPI → Google Flights (Playwright) → Kayak fallback
-- **RapidAPI budget control**: max 10 requests/month, tracked in DB
-- **Qatar Airways awards**: scrapes Privilege Club + optional seats.aero API
-- **ONE condensed Telegram alert** per day (all monitors in a single digest)
-- **ML price prediction**: 7-day forecasts using scikit-learn
-- **Vercel dashboard**: price history charts, award calendar, alert log
+### Cash Fares (Air Canada · WestJet · Flair)
+
+| Monitor ID | Route | Date Window | Threshold |
+|---|---|---|---|
+| `yyc-yyz-jul2-window` | YYC → YYZ | Jun 28 – Jul 6, 2026 | CAD 180 |
+| `yyc-yyz-jul13-window` | YYC → YYZ | Jul 9 – Jul 17, 2026 | CAD 180 |
+| `yyc-yyz-jul14-window` | YYC → YYZ | Jul 10 – Jul 18, 2026 | CAD 180 |
+| `yyz-yyc-june-last-week` | YYZ → YYC | Jun 24 – Jun 30, 2026 | CAD 180 |
+| `yyz-yyc-may8-window` | YYZ → YYC | May 3 – May 13, 2026 | CAD 160 |
+| `yyz-yyc-jun10` | YYZ → YYC | Jun 8 – Jun 12, 2026 | CAD 180 |
+| `yyc-yyz-jun13` | YYC → YYZ | Jun 11 – Jun 15, 2026 | CAD 180 |
+
+### Qatar Awards (Business Class · Privilege Club)
+
+| Monitor ID | Route | Month |
+|---|---|---|
+| `qatar-award-yyz-isb-jun2027` | YYZ → ISB | June 2027 |
+| `qatar-award-yyz-isb-jul2027` | YYZ → ISB | July 2027 |
+| `qatar-award-yyz-isb-dec2027` | YYZ → ISB | December 2027 |
+| `qatar-award-yyz-ist-jun2027` | YYZ → IST | June 2027 |
+| `qatar-award-yyz-ist-jul2027` | YYZ → IST | July 2027 |
+| `qatar-award-yyz-ist-dec2027` | YYZ → IST | December 2027 |
 
 ---
 
-## Routes Monitored
+## Project Structure
 
-### Cash Fares (Air Canada / WestJet / Flair)
-
-| Monitor | Route | Date Window |
-|---------|-------|-------------|
-| `yyc-yyz-jul2-window` | YYC → YYZ | Jun 28 – Jul 6, 2026 (±4 days from Jul 2) |
-| `yyc-yyz-jul13-window` | YYC → YYZ | Jul 9 – Jul 17, 2026 |
-| `yyc-yyz-jul14-window` | YYC → YYZ | Jul 10 – Jul 18, 2026 |
-| `yyz-yyc-june-last-week` | YYZ → YYC | Jun 24 – Jun 30, 2026 |
-| `yyz-yyc-may8-window` | YYZ → YYC | May 3 – May 13, 2026 (±5 days from May 8) |
-| `yyz-yyc-jun10` | YYZ → YYC | Jun 8 – Jun 12, 2026 |
-| `yyc-yyz-jun13` | YYC → YYZ | Jun 11 – Jun 15, 2026 |
-
-### Qatar Airways Awards (Business Class / Qsuite)
-
-| Destination | Months |
-|-------------|--------|
-| YYZ → ISB (Islamabad) | Jun 2027, Jul 2027, Dec 2027 |
-| YYZ → IST (Istanbul) | Jun 2027, Jul 2027, Dec 2027 |
+```
+flight-tracker/
+├── scraper/
+│   ├── main.py              ← Entry point (run this in GitHub Actions)
+│   ├── monitors.py          ← All route configurations
+│   ├── db.py                ← PostgreSQL helpers + RapidAPI budget tracking
+│   ├── telegram_bot.py      ← Single condensed digest sender
+│   ├── predictor.py         ← ML price forecasting (scikit-learn)
+│   └── adapters/
+│       ├── base.py          ← Playwright utilities, stealth, retries
+│       ├── rapidapi.py      ← Sky Scrapper API (10/month budget)
+│       ├── google_flights.py ← Primary Playwright scraper
+│       ├── kayak.py         ← Fallback Playwright scraper
+│       └── qatar_award.py   ← seats.aero API + Qatar website scraper
+├── dashboard/               ← Next.js 14 Vercel dashboard
+│   ├── app/
+│   │   ├── page.tsx         ← Monitor cards + status
+│   │   ├── history/[id]/    ← Price history + ML chart
+│   │   ├── awards/          ← Qatar award availability
+│   │   ├── alerts/          ← Alert history log
+│   │   ├── runs/            ← Scraper run history
+│   │   └── api/revalidate/  ← Cache revalidation webhook
+│   ├── components/
+│   │   └── PriceChart.tsx   ← Recharts line chart
+│   └── lib/
+│       ├── db.ts            ← PostgreSQL queries
+│       └── monitors.ts      ← Route config (mirrors monitors.py)
+├── .github/workflows/
+│   └── daily-flight-check.yml  ← GitHub Actions cron (07:17 AM ET)
+├── requirements.txt
+└── .env.example
+```
 
 ---
 
 ## Setup
 
-### Prerequisites
-
-- GitHub account (free)
-- Vercel account (free Hobby plan)
-- PostgreSQL database: [Vercel Postgres](https://vercel.com/storage/postgres), [Supabase](https://supabase.com), or [Neon](https://neon.tech) (all have free tiers)
-- Telegram bot token (free)
-- RapidAPI key for Sky Scrapper (free tier: 10+ calls/month)
-- *(Optional)* Residential proxy for anti-bot bypass (~$10–50/month)
-- *(Optional)* seats.aero Partner API key for award availability
-
----
-
-### Step 1: Clone & Configure
+### Step 1 — Clone & configure
 
 ```bash
 git clone https://github.com/YOUR_USERNAME/flight-tracker.git
@@ -64,91 +85,87 @@ cp .env.example .env
 # Edit .env with your credentials
 ```
 
----
+### Step 2 — Create a PostgreSQL database
 
-### Step 2: Create PostgreSQL Database
+Free options: [Supabase](https://supabase.com), [Neon](https://neon.tech), [Vercel Postgres](https://vercel.com/storage/postgres)
 
-Run the schema on your database:
+The schema is created automatically on first run. Or run manually:
 
 ```bash
-# Set DATABASE_URL in your shell, then:
-npm run db:migrate
+pip install -r requirements.txt
+python -c "import dotenv, scraper.db as db; dotenv.load_dotenv(); db.run_schema(); print('Done')"
 ```
 
-Or run the SQL manually from `apps/worker/src/db/schema.sql`.
+### Step 3 — Create a Telegram Bot
 
----
-
-### Step 3: Create Telegram Bot
-
-1. Message **@BotFather** on Telegram
-2. Send `/newbot` → follow prompts → save the **bot token**
-3. Start a chat with your bot
-4. Get your chat ID:
+1. Message **@BotFather** on Telegram → `/newbot` → follow prompts → copy the **bot token**
+2. Start a chat with your new bot
+3. Get your chat ID:
    ```
-   https://api.telegram.org/bot<TOKEN>/getUpdates
+   https://api.telegram.org/bot<YOUR_TOKEN>/getUpdates
    ```
-   Look for `"chat": {"id": 123456789}`
+   Find `"chat": {"id": 123456789}` in the response
 
----
+### Step 4 — Get a RapidAPI key (optional but recommended)
 
-### Step 4: Get RapidAPI Key
-
-1. Go to [Sky Scrapper on RapidAPI](https://rapidapi.com/apiheya/api/sky-scrapper)
-2. Subscribe (free tier available)
+1. Sign up at [rapidapi.com](https://rapidapi.com/apiheya/api/sky-scrapper)
+2. Subscribe to Sky Scrapper (has a free tier)
 3. Copy your `X-RapidAPI-Key`
 
-The tracker limits RapidAPI to **10 calls/month** automatically. Beyond that, it falls back to Playwright scraping.
+The tracker **automatically caps RapidAPI at 10 calls/month** via DB tracking. Beyond that it falls back to Playwright scraping.
 
----
+### Step 5 — Add GitHub Secrets
 
-### Step 5: Add GitHub Secrets
+Go to your repo → **Settings → Secrets and variables → Actions**:
 
-Go to your GitHub repo → **Settings → Secrets → Actions** → add:
+| Secret | Required | Description |
+|--------|----------|-------------|
+| `DATABASE_URL` | ✅ | PostgreSQL connection string |
+| `TELEGRAM_BOT_TOKEN` | ✅ | Token from @BotFather |
+| `TELEGRAM_CHAT_ID` | ✅ | Your Telegram chat ID |
+| `RAPIDAPI_KEY` | Optional | Sky Scrapper API key |
+| `PROXY_ENDPOINT` | Optional | Residential proxy (reduces blocks) |
+| `PROXY_USERNAME` | Optional | Proxy credentials |
+| `PROXY_PASSWORD` | Optional | Proxy credentials |
+| `SEATS_AERO_API_KEY` | Optional | seats.aero Partner API |
+| `VERCEL_REVALIDATE_URL` | Optional | Dashboard cache refresh URL |
 
-| Secret | Value |
-|--------|-------|
-| `DATABASE_URL` | Your PostgreSQL connection string |
-| `TELEGRAM_BOT_TOKEN` | Bot token from @BotFather |
-| `TELEGRAM_CHAT_ID` | Your Telegram chat ID |
-| `RAPIDAPI_KEY` | Sky Scrapper RapidAPI key |
-| `PROXY_ENDPOINT` | *(optional)* Proxy server URL |
-| `PROXY_USERNAME` | *(optional)* Proxy credentials |
-| `PROXY_PASSWORD` | *(optional)* Proxy credentials |
-| `SEATS_AERO_API_KEY` | *(optional)* seats.aero Partner API |
-| `VERCEL_REVALIDATE_URL` | Dashboard revalidation URL |
-
----
-
-### Step 6: Deploy Dashboard to Vercel
+### Step 6 — Deploy the dashboard to Vercel
 
 1. Go to [vercel.com](https://vercel.com) → **New Project**
 2. Import your GitHub repository
-3. Configure:
-   - **Root Directory**: `apps/web`
-   - **Framework**: Next.js
-   - **Environment Variables**: Add `DATABASE_URL` and `REVALIDATE_SECRET`
-4. Click **Deploy**
+3. Set **Root Directory** to `dashboard`
+4. Add environment variables: `DATABASE_URL`, `REVALIDATE_SECRET`
+5. Deploy
 
-Set the Vercel dashboard URL as a GitHub secret:
+Then update `VERCEL_REVALIDATE_URL` in GitHub Secrets:
 ```
-VERCEL_REVALIDATE_URL=https://your-app.vercel.app/api/revalidate?secret=YOUR_SECRET
+https://your-app.vercel.app/api/revalidate?secret=YOUR_REVALIDATE_SECRET
+```
+
+### Step 7 — Test
+
+**Manual trigger** from GitHub: Actions → Daily Flight Price Check → Run workflow
+
+**Local test:**
+```bash
+pip install -r requirements.txt
+python -m playwright install chromium --with-deps
+cp .env.example .env  # fill in DATABASE_URL + Telegram tokens
+python -m scraper.main
 ```
 
 ---
 
-### Step 7: Test
+## The Fix: Ubuntu 24.04 `libasound2` Bug
 
-Trigger a manual run from GitHub:
+The GitHub Actions workflow is pinned to `ubuntu-22.04` to avoid the Ubuntu 24.04 package rename bug:
 
-> **Actions → Daily Flight Price Check → Run workflow**
-
-Or test locally:
-```bash
-cp .env.example .env  # Fill in values
-npm install
-npm run worker:scrape
 ```
+E: Package 'libasound2' has no installation candidate
+```
+
+On Ubuntu 24.04, `libasound2` was renamed to `libasound2t64`, causing `playwright install --with-deps` to fail. Pinning to `ubuntu-22.04` resolves this completely.
 
 ---
 
@@ -157,120 +174,55 @@ npm run worker:scrape
 One message per day covering all monitors:
 
 ```
-✈️ Flight Price Daily Digest
-📅 Mar 12, 2026, 7:17 AM (Toronto)
+✈ Flight Price Daily Digest
+📅 Mar 13 2026, 7:17 AM ET
 ━━━━━━━━━━━━━━━━━━━━
 
-🏷️ CASH FARE ALERTS
+🏷 CASH FARE ALERTS
 
-🏆 YYC → YYZ — NEW ALL-TIME LOW
+🏆 YYC → YYZ — NEW ALL TIME LOW
    💰 CAD 142.50
    📆 2026-07-02
-   ✈️ Flair Airlines F8803
-   ⏱ 4h 25m | Nonstop
-   📉 Previous best: CAD 171.00 (save CAD 28.50)
+   ✈ Flair Airlines
+   ⏱ 4h 25m · Nonstop
+   📉 Prev best: CAD 171.00  (save CAD 28.50)
    🔗 Book Now
 
 🎫 QATAR AIRWAYS AWARD AVAILABILITY
+   Business / Qsuite from YYZ
 
-✈️ YYZ→IST (Qatar Business / Qsuite)
-   📅 Jun 2027: 65,000 Avios + CAD 248.00
-   🔗 Search Qatar
+✈ YYZ→IST
+   📅 Jun 2027: 65,000 Avios + CAD 248.00 taxes
+   🔗 Book on Qatar
 
-📋 TODAY'S BEST CASH FARES (all monitors)
+📋 TODAY'S BEST CASH FARES
    YYC→YYZ: CAD 142.50 on 2026-07-02 via Flair Airlines
-   YYZ→YYC: CAD 159.00 on 2026-06-28 via WestJet
 
 ━━━━━━━━━━━━━━━━━━━━
-📊 Checked 14 monitors | Found 87 quotes | 3 alerts triggered
-```
-
----
-
-## Architecture
-
-```
-GitHub Actions (daily cron: 11:17 UTC)
-    │
-    ├── npm run worker:scrape
-    │     ├── RapidAPI adapter (max 10/month)
-    │     ├── Google Flights Playwright (primary fallback)
-    │     ├── Kayak Playwright (secondary fallback)
-    │     └── Qatar Award scraper (Playwright + seats.aero)
-    │           │
-    │           └── ONE Telegram digest sent at end
-    │
-    ├── python3 predictor.py (ML price forecasts)
-    │
-    └── curl Vercel revalidation webhook
-          │
-          └── Vercel Dashboard (Next.js 14)
-                ├── /           → Monitor cards + status
-                ├── /awards     → Qatar award availability
-                ├── /alerts     → Alert history
-                └── /runs       → Scraper run logs
+📊 14 monitors · 89 quotes · 2 alerts
 ```
 
 ---
 
 ## Cost Estimate
 
-| Service | Monthly Cost |
-|---------|-------------|
-| GitHub Actions (public repo) | $0 |
-| Vercel Hobby | $0 |
-| Supabase / Neon (free tier) | $0 |
-| RapidAPI Sky Scrapper (10 calls) | $0 |
-| Telegram Bot API | $0 |
-| Proxies *(optional)* | ~$10–50 |
-| seats.aero Partner API *(optional)* | ~$10 |
-| **Total (no proxies)** | **$0/month** |
+| Service | Cost |
+|---------|------|
+| GitHub Actions (public repo) | Free |
+| Vercel Hobby (dashboard) | Free |
+| Supabase / Neon (free tier DB) | Free |
+| RapidAPI Sky Scrapper (10 calls/month) | Free |
+| Telegram Bot API | Free |
+| Residential proxy *(optional)* | ~$10–50/month |
+| seats.aero Partner API *(optional)* | ~$10/month |
+| **Total (no extras)** | **$0/month** |
 
 ---
 
-## Project Structure
+## Adding / Changing Routes
 
+Edit `scraper/monitors.py` and `dashboard/lib/monitors.ts` (both files must stay in sync). Then run the migration:
+
+```bash
+python -c "import dotenv, scraper.db as db; dotenv.load_dotenv(); db.run_schema(); from scraper.monitors import ALL_MONITORS; db.seed_monitors(ALL_MONITORS)"
 ```
-flight-tracker/
-├── .github/workflows/
-│   └── daily-flight-check.yml   # GitHub Actions cron
-├── apps/
-│   ├── worker/                  # Scraper engine (Node.js / TypeScript)
-│   │   └── src/
-│   │       ├── adapters/        # RapidAPI, Playwright, Kayak, Qatar
-│   │       ├── db/              # PostgreSQL client + schema
-│   │       ├── telegram/        # Condensed digest bot
-│   │       ├── scraper.ts       # Main orchestrator
-│   │       └── index.ts         # Entry point
-│   └── web/                     # Next.js 14 dashboard
-│       ├── app/                 # App Router pages
-│       ├── components/          # MonitorCard, PriceChart, etc.
-│       └── lib/db.ts            # DB queries for dashboard
-├── packages/
-│   ├── shared/src/              # Monitors config + shared types
-│   └── ml/src/predictor.py     # scikit-learn price predictor
-└── .env.example
-```
-
----
-
-## Customizing Alert Thresholds
-
-Edit `packages/shared/src/monitors.ts` to change `alertThreshold` per monitor:
-
-```typescript
-{
-  id: "yyc-yyz-jul2-window",
-  kind: "cash",
-  origin: "YYC",
-  destination: "YYZ",
-  // ...
-  alertThreshold: 160, // Alert if price drops below CAD 160
-}
-```
-
----
-
-## Adding New Routes
-
-Add entries to the `monitors` array in `packages/shared/src/monitors.ts`, then run `npm run db:migrate` to seed the new monitor into the database.
