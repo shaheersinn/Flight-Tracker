@@ -1,9 +1,10 @@
 {
-  "buildCommand": "cd ../.. && npm run web:build",
-  "outputDirectory": ".next",
-  "installCommand": "cd ../.. && npm ci",
+  "buildCommand": "cd ../.. && npm run build -w @flight-tracker/web",
+  "outputDirectory": "apps/web/.next",
+  "installCommand": "npm ci",
   "framework": "nextjs",
   "env": {
-    "DATABASE_URL": "@database-url"
+    "DATABASE_URL": "@database-url",
+    "REVALIDATE_SECRET": "@revalidate-secret"
   }
 }

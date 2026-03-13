@@ -1,20 +1,30 @@
 // apps/worker/src/adapters/google-flights-playwright.ts
 import { chromium, Browser, BrowserContext, Page } from "playwright";
 import { CashMonitor, AwardMonitor, FlightResult } from "@flight-tracker/shared";
-import { ScrapeAdapter, sleep } from "./base";
+import { ScrapeAdapter, buildFingerprint, sleep, retryWithBackoff } from "./base";
 
-interface RawFlight {
-  price: string;
-  airline: string;
-  departure: string;
-  arrival: string;
-  duration: string;
-  stops: string;
-  flightNumber: string;
+const PROXY_CONFIG = process.env.PROXY_ENDPOINT
+  ? {
+      server: process.env.PROXY_ENDPOINT,
+      username: process.env.PROXY_USERNAME,
+      password: process.env.PROXY_PASSWORD,
+    }
+  : undefined;
+
+const USER_AGENTS = [
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+  "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+];
+
+function randomUserAgent(): string {
+  return USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)];
 }
 
 export class GoogleFlightsPlaywrightAdapter implements ScrapeAdapter {
   name = "Google Flights (Playwright)";
+  priority = 2;
+
   private browser: Browser | null = null;
   private context: BrowserContext | null = null;
 
@@ -25,169 +35,153 @@ export class GoogleFlightsPlaywrightAdapter implements ScrapeAdapter {
         "--no-sandbox",
         "--disable-setuid-sandbox",
         "--disable-blink-features=AutomationControlled",
+        "--disable-infobars",
       ],
     });
-
     this.context = await this.browser.newContext({
-      userAgent:
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 " +
-        "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+      proxy: PROXY_CONFIG,
+      userAgent: randomUserAgent(),
       viewport: { width: 1440, height: 900 },
       locale: "en-CA",
       timezoneId: "America/Toronto",
+      extraHTTPHeaders: {
+        "Accept-Language": "en-CA,en;q=0.9",
+      },
     });
 
-    // Evade webdriver detection
+    // Stealth: override navigator.webdriver
     await this.context.addInitScript(() => {
       Object.defineProperty(navigator, "webdriver", { get: () => false });
-      // @ts-ignore
-      window.chrome = { runtime: {} };
+      Object.defineProperty(navigator, "plugins", {
+        get: () => [1, 2, 3],
+      });
     });
   }
 
-  private buildUrl(origin: string, destination: string, date: string): string {
-    // Google Flights URL format for one-way search
-    const d = date.replace(/-/g, "");
-    return (
-      `https://www.google.com/travel/flights/search?` +
-      `tfs=CBwQAhooagcIARIDWVlDEgoyMDI2LTA2LTI4cgcIARIDWVlaKAIyAjEwQAFIAXABmAEB&` +
-      `hl=en-CA&gl=ca&curr=CAD`
-    );
-    // Note: for production, construct the tfs parameter properly or use
-    // direct URL: https://www.google.com/travel/flights?q=Flights+from+{origin}+to+{destination}+on+{date}
-  }
-
-  private buildSearchUrl(
-    origin: string,
-    destination: string,
-    date: string
-  ): string {
-    const formattedDate = date; // YYYY-MM-DD
-    return (
-      `https://www.google.com/travel/flights?` +
-      `q=${encodeURIComponent(
-        `Flights from ${origin} to ${destination} on ${formattedDate} one way`
-      )}&hl=en-CA&gl=ca&curr=CAD`
-    );
-  }
-
-  private async scrapeDate(
-    page: Page,
-    origin: string,
-    destination: string,
-    date: string,
-    monitorId: string
-  ): Promise<FlightResult[]> {
-    const url = this.buildSearchUrl(origin, destination, date);
-
-    try {
-      await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
-
-      // Wait for results – Google Flights loads dynamically
-      await sleep(3000, 1500);
-
-      // Try to find flight result cards
-      const flightCards = await page
-        .locator('[data-pb-id]')
-        .or(page.locator('li[class*="pIav2d"]'))
-        .or(page.locator('[jsname="IWWDBc"]'))
-        .all();
-
-      if (flightCards.length === 0) {
-        console.warn(
-          `[GoogleFlights] No cards found for ${origin}→${destination} on ${date}`
-        );
-        return [];
-      }
-
-      const results: FlightResult[] = [];
-
-      for (const card of flightCards.slice(0, 5)) {
-        try {
-          const text = await card.innerText();
-          const lines = text
-            .split("\n")
-            .map((l) => l.trim())
-            .filter(Boolean);
-
-          // Heuristic parsing of the card text
-          const priceMatch = text.match(/\$[\d,]+|\bCAD[\s$]*([\d,]+)/i);
-          const price = priceMatch
-            ? parseFloat(priceMatch[0].replace(/[^0-9.]/g, ""))
-            : null;
-
-          if (!price) continue;
-
-          const airlineHint =
-            lines.find(
-              (l) =>
-                l.match(/Air Canada|WestJet|Flair|Porter|Swoop/i) !== null
-            ) ?? "Unknown";
-
-          const durationHint =
-            lines.find((l) => l.match(/\d+\s*hr/i)) ?? "";
-          const stopsHint = lines.find((l) =>
-            l.match(/nonstop|1 stop|2 stop/i)
-          );
-          const stops = stopsHint
-            ? stopsHint.toLowerCase().includes("nonstop")
-              ? 0
-              : parseInt(stopsHint) || 1
-            : 0;
-
-          results.push({
-            provider: this.name,
-            monitorId,
-            origin,
-            destination,
-            departureDate: date,
-            totalPrice: price,
-            currency: "CAD",
-            airline: airlineHint,
-            flightNumber: "",
-            stops,
-            duration: durationHint,
-            bookingUrl: url,
-            scrapedAt: new Date().toISOString(),
-            isAward: false,
-          });
-        } catch {
-          // skip malformed card
-        }
-      }
-
-      return results;
-    } catch (err) {
-      console.error(
-        `[GoogleFlights] Error scraping ${origin}→${destination} ${date}:`,
-        err
-      );
-      return [];
-    }
+  async isHealthy(): Promise<boolean> {
+    return true; // Always available as fallback
   }
 
   async scrapeWindow(monitor: CashMonitor): Promise<FlightResult[]> {
-    if (!this.context) await this.initialize();
+    if (!this.browser) await this.initialize();
+    const results: FlightResult[] = [];
 
-    const page = await this.context!.newPage();
+    const dates = this.getDateRange(monitor.dateFrom, monitor.dateTo);
+
+    for (const date of dates) {
+      try {
+        const dayResults = await retryWithBackoff(
+          () => this.scrapeOneDate(monitor, date),
+          3,
+          5000
+        );
+        results.push(...dayResults);
+        // Human-like delay between date searches
+        await sleep(3000 + Math.random() * 2000);
+      } catch (err: any) {
+        console.warn(
+          `[GF-Playwright] Failed for ${monitor.origin}→${monitor.destination} on ${date}: ${err.message}`
+        );
+      }
+    }
+
+    return results;
+  }
+
+  private async scrapeOneDate(
+    monitor: CashMonitor,
+    date: string
+  ): Promise<FlightResult[]> {
+    const page = (await this.context!.newPage()) as Page;
     const results: FlightResult[] = [];
 
     try {
-      // Enumerate every date in the window
-      const start = new Date(monitor.dateFrom);
-      const end = new Date(monitor.dateTo);
+      const url = this.buildUrl(monitor, date);
+      await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
 
-      for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-        const dateStr = d.toISOString().split("T")[0];
-        const dayResults = await this.scrapeDate(
-          page,
-          monitor.origin,
-          monitor.destination,
-          dateStr,
-          monitor.id
-        );
-        results.push(...dayResults);
-        await sleep(2000, 1000); // polite delay between dates
+      // Simulate reading behavior
+      await sleep(2000 + Math.random() * 1500);
+      await page.mouse.move(
+        400 + Math.random() * 200,
+        300 + Math.random() * 200
+      );
+
+      // Wait for flight results
+      try {
+        await page.waitForSelector('div[jsname="IWWDBc"]', { timeout: 12000 });
+      } catch {
+        // Try alternate selector
+        await page.waitForSelector('[data-result-index]', { timeout: 8000 });
+      }
+
+      await sleep(2500);
+
+      // Extract flights using evaluate
+      const flights = await page.evaluate(() => {
+        const cards = document.querySelectorAll('div[jsname="IWWDBc"]');
+        const extracted: any[] = [];
+
+        cards.forEach((card) => {
+          try {
+            // Price
+            const priceEl =
+              card.querySelector('[class*="YMlIz"]') ||
+              card.querySelector('[class*="FpEdX"]') ||
+              card.querySelector('[aria-label*="$"]') ||
+              card.querySelector('[aria-label*="CA"]');
+            const priceText = priceEl?.textContent ?? "";
+            const priceMatch = priceText.match(/[\d,]+/);
+            if (!priceMatch) return;
+            const price = parseInt(priceMatch[0].replace(",", ""), 10);
+
+            // Airline
+            const airlineEl =
+              card.querySelector('[class*="sSHqwe"]') ||
+              card.querySelector('[class*="tPgKwe"]') ||
+              card.querySelector('img[alt]');
+            const airline =
+              airlineEl instanceof HTMLImageElement
+                ? airlineEl.alt
+                : airlineEl?.textContent ?? "Unknown";
+
+            // Duration
+            const durationEl = card.querySelector('[class*="Ak5kof"]');
+            const duration = durationEl?.textContent?.trim() ?? "Unknown";
+
+            // Stops
+            const stopsEl =
+              card.querySelector('[class*="EfT7Ae"]') ||
+              card.querySelector('[class*="stops"]');
+            const stopsText = stopsEl?.textContent ?? "0 stops";
+            const stops = stopsText.toLowerCase().includes("nonstop")
+              ? 0
+              : parseInt(stopsText.match(/\d+/)?.[0] ?? "1", 10);
+
+            extracted.push({ price, airline, duration, stops });
+          } catch {}
+        });
+
+        return extracted;
+      });
+
+      for (const f of flights) {
+        const result: FlightResult = {
+          provider: this.name,
+          monitorId: monitor.id,
+          kind: "cash",
+          origin: monitor.origin,
+          destination: monitor.destination,
+          departureDate: date,
+          totalPrice: f.price,
+          currency: "CAD",
+          airline: f.airline.trim(),
+          stops: f.stops,
+          duration: f.duration,
+          bookingUrl: this.buildUrl(monitor, date),
+          scrapedAt: new Date().toISOString(),
+        };
+        (result as any).fingerprint = buildFingerprint(result);
+        results.push(result);
       }
     } finally {
       await page.close();
@@ -197,36 +191,35 @@ export class GoogleFlightsPlaywrightAdapter implements ScrapeAdapter {
   }
 
   async scrapeMonth(monitor: AwardMonitor): Promise<FlightResult[]> {
-    // Google Flights Playwright is for cash fares; award scraping handled
-    // by the Qatar Airways adapter. Return empty here.
+    // Google Flights doesn't support award search - return empty
     return [];
   }
 
-  async isHealthy(): Promise<boolean> {
-    if (!this.context) {
-      try {
-        await this.initialize();
-      } catch {
-        return false;
-      }
-    }
-    try {
-      const page = await this.context!.newPage();
-      await page.goto("https://www.google.com/travel/flights", {
-        timeout: 15000,
-      });
-      await page.close();
-      return true;
-    } catch {
-      return false;
-    }
+  async close(): Promise<void> {
+    await this.context?.close();
+    await this.browser?.close();
+    this.browser = null;
+    this.context = null;
   }
 
-  async close(): Promise<void> {
-    if (this.browser) {
-      await this.browser.close();
-      this.browser = null;
-      this.context = null;
+  private buildUrl(monitor: CashMonitor, date: string): string {
+    const stops = monitor.maxStops === 0 ? "0" : "";
+    const base = `https://www.google.com/travel/flights?hl=en-CA&gl=CA&curr=CAD`;
+    return (
+      base +
+      `#flt=${monitor.origin}.${monitor.destination}.${date};c:CAD;e:1;` +
+      `sd:1;t:f${stops ? ";s:" + stops : ""}`
+    );
+  }
+
+  private getDateRange(from: string, to: string): string[] {
+    const dates: string[] = [];
+    const cur = new Date(from);
+    const end = new Date(to);
+    while (cur <= end) {
+      dates.push(cur.toISOString().split("T")[0]);
+      cur.setDate(cur.getDate() + 1);
     }
+    return dates;
   }
 }

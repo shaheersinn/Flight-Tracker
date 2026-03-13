@@ -3,23 +3,24 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "scrape": "ts-node -r tsconfig-paths/register src/index.ts",
-    "scrape:dry": "DRY_RUN=1 ts-node -r tsconfig-paths/register src/index.ts",
-    "build": "tsc",
-    "lint": "eslint src/**/*.ts"
+    "scrape": "ts-node src/index.ts",
+    "predict": "python3 ../ml/src/predictor.py",
+    "db:migrate": "ts-node src/db/migrate.ts"
   },
   "dependencies": {
     "@flight-tracker/shared": "*",
-    "node-telegram-bot-api": "^0.64.0",
-    "pg": "^8.11.0",
-    "playwright": "^1.43.0"
+    "playwright": "^1.44.0",
+    "axios": "^1.7.0",
+    "node-telegram-bot-api": "^0.66.0",
+    "pg": "^8.12.0",
+    "dotenv": "^16.4.0",
+    "date-fns": "^3.6.0"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
     "@types/node-telegram-bot-api": "^0.64.0",
     "@types/pg": "^8.11.0",
-    "ts-node": "^10.9.2",
-    "tsconfig-paths": "^4.2.0",
+    "ts-node": "^10.9.0",
     "typescript": "^5.4.0"
   }
 }

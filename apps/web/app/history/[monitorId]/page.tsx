@@ -1,157 +1,168 @@
 // apps/web/app/history/[monitorId]/page.tsx
+import { getPriceHistory, getLatestPredictions } from "../../../lib/db";
 import { monitors } from "@flight-tracker/shared";
-import { getQuoteHistory, QuoteRow } from "@/lib/db";
-import { PriceChart } from "@/components/PriceChart";
-import { notFound } from "next/navigation";
+import { PriceChart } from "../../../components/PriceChart";
 import Link from "next/link";
 
 export const revalidate = 300;
 
-export async function generateStaticParams() {
-  return monitors.map((m) => ({ monitorId: m.id }));
-}
-
-function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString("en-CA", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-}
-
-export default async function HistoryPage({
-  params,
-}: {
+interface Props {
   params: { monitorId: string };
-}) {
-  const monitor = monitors.find((m) => m.id === params.monitorId);
-  if (!monitor) return notFound();
+}
 
-  let history: QuoteRow[] = [];
-  try {
-    history = await getQuoteHistory(params.monitorId, 60);
-  } catch (err) {
-    console.error("DB error:", err);
+export default async function HistoryPage({ params }: Props) {
+  const monitor = monitors.find((m) => m.id === params.monitorId);
+  if (!monitor) {
+    return (
+      <div style={{ color: "var(--text-2)" }}>
+        Monitor not found.{" "}
+        <Link href="/" style={{ color: "var(--accent-light)" }}>
+          Back to dashboard
+        </Link>
+      </div>
+    );
   }
 
-  const isCash = monitor.kind === "cash";
-  const prices = history
-    .filter((q) => isCash ? q.total_price != null : q.points_cost != null)
-    .map((q) => ({
-      date: new Date(q.checked_at).toLocaleDateString("en-CA"),
-      price: isCash ? q.total_price! : q.points_cost!,
-      provider: q.provider,
-      airline: q.airline,
-      departure_date: q.departure_date,
-    }));
+  const [history, predictions] = await Promise.all([
+    getPriceHistory(params.monitorId, 60),
+    getLatestPredictions(),
+  ]);
 
-  const bestPrice = prices.reduce<number | null>((best, p) => {
-    return best === null || p.price < best ? p.price : best;
-  }, null);
-
-  const avgPrice =
-    prices.length > 0
-      ? prices.reduce((sum, p) => sum + p.price, 0) / prices.length
-      : null;
+  const pred = predictions.find((p) => p.monitor_id === params.monitorId);
 
   return (
-    <div>
-      <div className="mb-6">
-        <Link href="/" className="text-sky-500 text-sm hover:text-sky-400 mb-3 inline-block">
-          ← Back to Dashboard
-        </Link>
-        <h1 className="text-2xl font-bold text-white">
-          {monitor.kind === "cash"
-            ? `${(monitor as any).origin} → ${(monitor as any).destination}`
-            : `YYZ → ${(monitor as any).destination} (Award)`}
-        </h1>
-        <p className="text-gray-400 text-sm mt-1 font-mono">{monitor.id}</p>
-      </div>
+    <div className="space-y-6">
+      {/* Back */}
+      <Link
+        href="/"
+        className="text-sm flex items-center gap-1 hover:opacity-80"
+        style={{ color: "var(--text-3)" }}
+      >
+        ← Back to Dashboard
+      </Link>
 
-      {/* Stats row */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
-        <StatCard
-          label="Best Price"
-          value={bestPrice != null ? (isCash ? `CAD $${bestPrice.toFixed(2)}` : `${bestPrice.toLocaleString()} Avios`) : "—"}
-          highlight
-        />
-        <StatCard
-          label="Avg Price"
-          value={avgPrice != null ? (isCash ? `CAD $${avgPrice.toFixed(2)}` : `${Math.round(avgPrice).toLocaleString()} Avios`) : "—"}
-        />
-        <StatCard
-          label="Data Points"
-          value={history.length.toString()}
-        />
-        <StatCard
-          label="Tracking Since"
-          value={history.length > 0 ? formatDate(history[0].checked_at) : "—"}
-        />
+      {/* Header */}
+      <div>
+        <h1 className="text-2xl font-bold" style={{ color: "var(--text-1)" }}>
+          {monitor.kind === "cash"
+            ? `${monitor.origin} → ${monitor.destination}`
+            : `${monitor.origin} → ${monitor.destination}`}
+        </h1>
+        <p className="text-sm mt-1" style={{ color: "var(--text-2)" }}>
+          {monitor.id} · Price history (last 60 days)
+        </p>
       </div>
 
       {/* Chart */}
-      {prices.length > 0 ? (
-        <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 mb-8">
-          <h2 className="text-sm font-semibold text-gray-300 mb-4">
-            Price History (last 60 days)
-          </h2>
-          <PriceChart data={prices} isCash={isCash} />
-        </div>
-      ) : (
-        <div className="bg-gray-900 border border-gray-800 rounded-xl p-8 text-center text-gray-500 mb-8">
-          No price history yet — check back after the first scraper run.
+      <div className="glass p-6 rounded-xl">
+        <PriceChart history={history} prediction={pred} />
+      </div>
+
+      {/* Stats */}
+      {history.length > 0 && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {[
+            {
+              label: "All-time Low",
+              value: `CAD ${Math.min(...history.map((h: any) => parseFloat(h.total_price))).toFixed(2)}`,
+              color: "var(--green)",
+            },
+            {
+              label: "All-time High",
+              value: `CAD ${Math.max(...history.map((h: any) => parseFloat(h.total_price))).toFixed(2)}`,
+              color: "var(--red)",
+            },
+            {
+              label: "Average",
+              value: `CAD ${(
+                history.reduce((sum: number, h: any) => sum + parseFloat(h.total_price), 0) /
+                history.length
+              ).toFixed(2)}`,
+              color: "var(--text-1)",
+            },
+            {
+              label: "Data Points",
+              value: history.length.toString(),
+              color: "var(--accent-light)",
+            },
+          ].map((stat) => (
+            <div key={stat.label} className="glass p-4 rounded-xl text-center">
+              <div className="text-xs mb-1" style={{ color: "var(--text-3)" }}>
+                {stat.label}
+              </div>
+              <div
+                className="price-badge text-lg font-bold"
+                style={{ color: stat.color }}
+              >
+                {stat.value}
+              </div>
+            </div>
+          ))}
         </div>
       )}
 
-      {/* Recent quotes table */}
-      {history.length > 0 && (
-        <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
-          <div className="px-4 py-3 border-b border-gray-800">
-            <h2 className="text-sm font-semibold text-gray-300">Recent Quotes</h2>
+      {/* Prediction info */}
+      {pred && (
+        <div className="glass p-5 rounded-xl">
+          <h3 className="text-sm font-semibold mb-3" style={{ color: "var(--text-1)" }}>
+            🤖 7-Day ML Prediction
+          </h3>
+          <div className="grid grid-cols-3 gap-4 text-center">
+            <div>
+              <div className="text-xs mb-1" style={{ color: "var(--text-3)" }}>Predicted Min</div>
+              <div className="price-badge text-base font-bold" style={{ color: "var(--green)" }}>
+                CAD {parseFloat(pred.predicted_min).toFixed(2)}
+              </div>
+            </div>
+            <div>
+              <div className="text-xs mb-1" style={{ color: "var(--text-3)" }}>Predicted Mean</div>
+              <div className="price-badge text-base font-bold" style={{ color: "var(--text-1)" }}>
+                CAD {parseFloat(pred.predicted_mean).toFixed(2)}
+              </div>
+            </div>
+            <div>
+              <div className="text-xs mb-1" style={{ color: "var(--text-3)" }}>Confidence</div>
+              <div className="price-badge text-base font-bold" style={{ color: "var(--accent-light)" }}>
+                {(parseFloat(pred.confidence) * 100).toFixed(0)}%
+              </div>
+            </div>
           </div>
+        </div>
+      )}
+
+      {/* Raw data table */}
+      {history.length > 0 && (
+        <div className="glass p-5 rounded-xl">
+          <h3 className="text-sm font-semibold mb-3" style={{ color: "var(--text-1)" }}>
+            Recent Quotes
+          </h3>
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-xs">
               <thead>
-                <tr className="border-b border-gray-800 text-gray-500 text-xs">
-                  <th className="text-left px-4 py-2">Checked At</th>
-                  <th className="text-left px-4 py-2">
-                    {isCash ? "Price (CAD)" : "Avios"}
-                  </th>
-                  <th className="text-left px-4 py-2">Airline</th>
-                  <th className="text-left px-4 py-2">Provider</th>
-                  <th className="text-left px-4 py-2">Departs</th>
+                <tr style={{ color: "var(--text-3)", borderBottom: "1px solid var(--border)" }}>
+                  <th className="text-left py-2 pr-4">Departure</th>
+                  <th className="text-left py-2 pr-4">Price</th>
+                  <th className="text-left py-2 pr-4">Airline</th>
+                  <th className="text-left py-2 pr-4">Provider</th>
+                  <th className="text-left py-2">Checked</th>
                 </tr>
               </thead>
               <tbody>
-                {history.slice(0, 30).map((q) => (
+                {history.slice(-20).reverse().map((row: any, i: number) => (
                   <tr
-                    key={q.id}
-                    className="border-b border-gray-800/50 hover:bg-gray-800/30 transition-colors"
+                    key={i}
+                    style={{
+                      borderBottom: "1px solid rgba(255,255,255,0.04)",
+                      color: "var(--text-2)",
+                    }}
                   >
-                    <td className="px-4 py-2 text-gray-400 text-xs">
-                      {new Date(q.checked_at).toLocaleString("en-CA", {
-                        month: "short",
-                        day: "numeric",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
+                    <td className="py-2 pr-4">{row.departure_date?.toString().split("T")[0]}</td>
+                    <td className="py-2 pr-4 price-badge" style={{ color: "var(--text-1)" }}>
+                      CAD {parseFloat(row.total_price).toFixed(2)}
                     </td>
-                    <td className="px-4 py-2 font-mono font-semibold text-green-400">
-                      {q.total_price != null
-                        ? `$${q.total_price.toFixed(2)}`
-                        : q.points_cost != null
-                        ? `${q.points_cost.toLocaleString()}`
-                        : "—"}
-                    </td>
-                    <td className="px-4 py-2 text-gray-300">{q.airline}</td>
-                    <td className="px-4 py-2 text-gray-500 text-xs">
-                      {q.provider}
-                    </td>
-                    <td className="px-4 py-2 text-gray-400 text-xs">
-                      {q.departure_date
-                        ? formatDate(q.departure_date)
-                        : "—"}
-                    </td>
+                    <td className="py-2 pr-4">{row.airline}</td>
+                    <td className="py-2 pr-4">{row.provider}</td>
+                    <td className="py-2">{new Date(row.checked_at).toLocaleDateString("en-CA")}</td>
                   </tr>
                 ))}
               </tbody>
@@ -159,29 +170,6 @@ export default async function HistoryPage({
           </div>
         </div>
       )}
-    </div>
-  );
-}
-
-function StatCard({
-  label,
-  value,
-  highlight = false,
-}: {
-  label: string;
-  value: string;
-  highlight?: boolean;
-}) {
-  return (
-    <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
-      <div className="text-xs text-gray-500 mb-1">{label}</div>
-      <div
-        className={`text-xl font-bold ${
-          highlight ? "text-green-400" : "text-white"
-        }`}
-      >
-        {value}
-      </div>
     </div>
   );
 }

@@ -1,214 +1,213 @@
 // apps/worker/src/adapters/qatar-award.ts
-//
-// Scrapes Qatar Airways Privilege Club award calendar for business class
-// availability. Falls back to Seats.aero API if SEATS_AERO_API_KEY is set.
+// Scrapes Qatar Airways Privilege Club for award availability
+// Primary: Qatar Airways website | Fallback: seats.aero API
 
-import { chromium, Browser, BrowserContext, Page } from "playwright";
+import axios from "axios";
+import { chromium, Browser, BrowserContext } from "playwright";
 import { CashMonitor, AwardMonitor, FlightResult } from "@flight-tracker/shared";
-import { ScrapeAdapter, sleep } from "./base";
+import { ScrapeAdapter, buildFingerprint, sleep, retryWithBackoff } from "./base";
+
+const PROXY_CONFIG = process.env.PROXY_ENDPOINT
+  ? {
+      server: process.env.PROXY_ENDPOINT,
+      username: process.env.PROXY_USERNAME,
+      password: process.env.PROXY_PASSWORD,
+    }
+  : undefined;
 
 export class QatarAwardAdapter implements ScrapeAdapter {
   name = "Qatar Airways (Award)";
+  priority = 1;
+
   private browser: Browser | null = null;
   private context: BrowserContext | null = null;
-  private seatsAeroKey: string | null;
 
-  constructor(seatsAeroKey?: string) {
-    this.seatsAeroKey = seatsAeroKey ?? null;
+  async isHealthy(): Promise<boolean> {
+    return true;
   }
 
-  async initialize(): Promise<void> {
-    this.browser = await chromium.launch({
-      headless: true,
-      args: ["--no-sandbox", "--disable-setuid-sandbox"],
-    });
-    this.context = await this.browser.newContext({
-      userAgent:
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
-        "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-      viewport: { width: 1280, height: 800 },
-      locale: "en-GB",
-    });
-    await this.context.addInitScript(() => {
-      Object.defineProperty(navigator, "webdriver", { get: () => false });
-    });
+  async scrapeWindow(_monitor: CashMonitor): Promise<FlightResult[]> {
+    return []; // Cash fares not supported
   }
 
-  // ── Seats.aero fallback ─────────────────────────────────────────────────
-
-  private async scrapeSeatsAero(
-    monitor: AwardMonitor
-  ): Promise<FlightResult[]> {
-    if (!this.seatsAeroKey) return [];
-
-    const airportMap: Record<string, string> = {
-      ISB: "ISB",
-      IST: "IST",
-      SAW: "SAW",
-    };
-
-    const dest = airportMap[monitor.destination] ?? monitor.destination;
-    const [year, month] = monitor.month.split("-");
-    const startDate = `${year}-${month}-01`;
-    const endDate = `${year}-${month}-28`; // seats.aero handles month-end
-
-    try {
-      const url =
-        `https://api.seats.aero/partnerapi/availability?` +
-        `origin_airport=YYZ&destination_airport=${dest}` +
-        `&start_date=${startDate}&end_date=${endDate}` +
-        `&cabin=business&source=qr`; // qr = Qatar Airways
-
-      const resp = await fetch(url, {
-        headers: {
-          "Partner-Authorization": this.seatsAeroKey,
-          "Content-Type": "application/json",
-        },
-      });
-
-      if (!resp.ok) {
-        console.warn(`[SeatsAero] HTTP ${resp.status}`);
-        return [];
+  async scrapeMonth(monitor: AwardMonitor): Promise<FlightResult[]> {
+    // Try seats.aero first (faster, more reliable) if API key present
+    if (process.env.SEATS_AERO_API_KEY) {
+      try {
+        const results = await retryWithBackoff(
+          () => this.scrapeSeatsAero(monitor),
+          2,
+          3000
+        );
+        if (results.length > 0) return results;
+      } catch (err: any) {
+        console.warn(`[Qatar-Award] seats.aero failed: ${err.message}`);
       }
-
-      const json = await resp.json();
-      const trips: any[] = json?.data ?? [];
-
-      return trips
-        .filter((t) => t.YAvailable || t.JAvailable) // Y=eco, J=biz
-        .map((t) => ({
-          provider: "Seats.aero",
-          monitorId: monitor.id,
-          origin: "YYZ",
-          destination: monitor.destination,
-          departureDate: t.Date,
-          pointsCost: t.JMileageCost ?? t.YMileageCost ?? 0,
-          cashSurcharge: t.JTaxes ?? t.YTaxes ?? 0,
-          currency: "USD",
-          cabin: "business",
-          airline: "Qatar Airways",
-          stops: 1,
-          duration: "~18h",
-          bookingUrl: "https://www.qatarairways.com/en/privilege-club/redeem/flight-rewards.html",
-          scrapedAt: new Date().toISOString(),
-          isAward: true,
-        }));
-    } catch (err) {
-      console.error("[SeatsAero] Error:", err);
-      return [];
     }
+
+    // Fallback to Playwright scraping of Qatar Privilege Club
+    return retryWithBackoff(
+      () => this.scrapeQatarWebsite(monitor),
+      3,
+      8000
+    );
   }
 
-  // ── Qatar Airways Privilege Club direct scrape ──────────────────────────
+  // ─── seats.aero API ────────────────────────────────────────────────
 
-  private async scrapeQatarPrivilegeClub(
-    monitor: AwardMonitor
-  ): Promise<FlightResult[]> {
-    if (!this.context) await this.initialize();
+  private async scrapeSeatsAero(monitor: AwardMonitor): Promise<FlightResult[]> {
+    const [year, monthNum] = monitor.month.split("-");
+    const startDate = `${year}-${monthNum}-01`;
+    const endDate = `${year}-${monthNum}-${this.daysInMonth(parseInt(year), parseInt(monthNum))}`;
+
+    const response = await axios.get("https://seats.aero/partnerapi/availability", {
+      headers: {
+        "Partner-Authorization": process.env.SEATS_AERO_API_KEY!,
+        "Content-Type": "application/json",
+      },
+      params: {
+        origin_airport: monitor.origin,
+        destination_airport: monitor.destination,
+        start_date: startDate,
+        end_date: endDate,
+        cabin: this.mapCabinToSeatsAero(monitor.cabin),
+      },
+      timeout: 15000,
+    });
+
+    const data = response.data?.data ?? [];
+    const results: FlightResult[] = [];
+
+    for (const slot of data) {
+      if (!slot.available) continue;
+
+      const result: FlightResult = {
+        provider: "seats.aero",
+        monitorId: monitor.id,
+        kind: "award",
+        origin: monitor.origin,
+        destination: monitor.destination,
+        departureDate: slot.date,
+        pointsCost: slot.mileageCost ?? slot.points,
+        cashSurcharge: slot.taxesFees,
+        currency: "CAD",
+        cabin: monitor.cabin ?? "business",
+        airline: "Qatar Airways",
+        stops: slot.stops ?? 1,
+        duration: slot.duration ?? "Unknown",
+        bookingUrl: `https://www.qatarairways.com/en-ca/privilege-club/redeem-avios.html`,
+        scrapedAt: new Date().toISOString(),
+      };
+      (result as any).fingerprint = buildFingerprint(result);
+      results.push(result);
+    }
+
+    return results;
+  }
+
+  // ─── Qatar Airways Website Scraper ────────────────────────────────
+
+  private async scrapeQatarWebsite(monitor: AwardMonitor): Promise<FlightResult[]> {
+    if (!this.browser) await this.initBrowser();
 
     const page = await this.context!.newPage();
     const results: FlightResult[] = [];
 
     try {
-      const [year, month] = monitor.month.split("-");
-      // Privilege Club award search URL
-      const url =
-        `https://www.qatarairways.com/en/privilege-club/redeem/flight-rewards.html` +
-        `?widget=QR&searchType=F&addTaxToMiles=on` +
-        `&upsellCallID=&bookingClass=J` +
-        `&tripType=O&fromStation=YYZ&toStation=${monitor.destination}` +
-        `&departingHidden=${year}-${month}-01` +
-        `&returnHidden=&numOfAdults=1&numOfChildren=0&numOfInfants=0`;
-
-      console.log(
-        `[QatarAward] Checking ${monitor.origin}→${monitor.destination} ${monitor.month}`
-      );
+      // Navigate to Qatar Privilege Club search
+      const url = `https://www.qatarairways.com/en-ca/privilege-club/redeem-avios.html`;
       await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
-      await sleep(4000, 2000);
+      await sleep(3000);
 
-      // Click "Search" button if present
+      // Fill in search form
+      // Origin
+      const originInput = await page.waitForSelector(
+        'input[placeholder*="From"], input[name*="origin"], [data-testid*="origin"]',
+        { timeout: 10000 }
+      );
+      await originInput?.fill(monitor.origin);
+      await sleep(1000);
+      await page.keyboard.press("ArrowDown");
+      await page.keyboard.press("Enter");
+
+      // Destination
+      const destInput = await page.waitForSelector(
+        'input[placeholder*="To"], input[name*="destination"], [data-testid*="destination"]',
+        { timeout: 8000 }
+      );
+      await destInput?.fill(monitor.destination);
+      await sleep(1000);
+      await page.keyboard.press("ArrowDown");
+      await page.keyboard.press("Enter");
+
+      // Date - set to first day of the month
+      const [year, monthNum] = monitor.month.split("-");
+      const dateStr = `${year}-${monthNum}-01`;
+
+      const dateInput = await page.waitForSelector(
+        'input[type="date"], [data-testid*="date"]',
+        { timeout: 8000 }
+      );
+      await dateInput?.fill(dateStr);
+      await sleep(500);
+
+      // Submit search
+      const searchBtn = await page.waitForSelector(
+        'button[type="submit"], [data-testid*="search"]',
+        { timeout: 8000 }
+      );
+      await searchBtn?.click();
+      await sleep(5000);
+
+      // Parse results
       try {
-        const searchBtn = page.locator('[id*="btnSearch"], button[type="submit"]').first();
-        if (await searchBtn.isVisible({ timeout: 3000 })) {
-          await searchBtn.click();
-          await sleep(5000, 2000);
+        await page.waitForSelector(
+          '[class*="flight-result"], [class*="award-result"], [data-testid*="flight"]',
+          { timeout: 15000 }
+        );
+
+        const flights = await page.evaluate(() => {
+          const cards = document.querySelectorAll(
+            '[class*="flight-result"], [class*="award"], [data-testid*="flight"]'
+          );
+          return Array.from(cards).map((card) => {
+            const pointsEl = card.querySelector('[class*="points"], [class*="miles"], [class*="avios"]');
+            const points = parseInt(
+              pointsEl?.textContent?.replace(/\D/g, "") ?? "0"
+            );
+            const dateEl = card.querySelector('[class*="date"], time');
+            const dateText = dateEl?.textContent?.trim() ?? "";
+            const durationEl = card.querySelector('[class*="duration"]');
+            const duration = durationEl?.textContent?.trim() ?? "Unknown";
+            return { points, dateText, duration };
+          });
+        });
+
+        for (const f of flights) {
+          if (!f.points) continue;
+          const result: FlightResult = {
+            provider: this.name,
+            monitorId: monitor.id,
+            kind: "award",
+            origin: monitor.origin,
+            destination: monitor.destination,
+            departureDate: dateStr,
+            pointsCost: f.points,
+            currency: "CAD",
+            cabin: monitor.cabin ?? "business",
+            airline: "Qatar Airways",
+            stops: 1,
+            duration: f.duration,
+            bookingUrl: url,
+            scrapedAt: new Date().toISOString(),
+          };
+          (result as any).fingerprint = buildFingerprint(result);
+          results.push(result);
         }
       } catch {
-        // may already be searching
+        // No results found for this month
+        console.log(`[Qatar-Award] No award seats found for ${monitor.id}`);
       }
-
-      // Look for available dates in the calendar
-      const availableCells = await page
-        .locator(
-          '.calendar-cell.available, [class*="available"][class*="date"], ' +
-            '[data-available="true"]'
-        )
-        .all();
-
-      console.log(
-        `[QatarAward] Found ${availableCells.length} available dates`
-      );
-
-      for (const cell of availableCells.slice(0, 20)) {
-        try {
-          const dateAttr = await cell.getAttribute("data-date");
-          const milesText = await cell.innerText();
-          const milesMatch = milesText.match(/([\d,]+)\s*miles?/i);
-          const miles = milesMatch
-            ? parseInt(milesMatch[1].replace(/,/g, ""))
-            : null;
-
-          const dateStr =
-            dateAttr ?? `${year}-${month}-${String(results.length + 1).padStart(2, "0")}`;
-
-          if (miles) {
-            results.push({
-              provider: this.name,
-              monitorId: monitor.id,
-              origin: monitor.origin,
-              destination: monitor.destination,
-              departureDate: dateStr,
-              pointsCost: miles,
-              cashSurcharge: 250, // typical QR surcharge estimate
-              currency: "USD",
-              cabin: monitor.cabin ?? "business",
-              airline: "Qatar Airways",
-              stops: 1,
-              duration: "~18h",
-              bookingUrl: url,
-              scrapedAt: new Date().toISOString(),
-              isAward: true,
-            });
-          }
-        } catch {
-          // skip cell
-        }
-      }
-
-      // If direct scrape found nothing but cells exist – flag availability
-      if (results.length === 0 && availableCells.length > 0) {
-        results.push({
-          provider: this.name,
-          monitorId: monitor.id,
-          origin: monitor.origin,
-          destination: monitor.destination,
-          departureDate: `${year}-${month}`,
-          pointsCost: undefined,
-          currency: "USD",
-          cabin: monitor.cabin ?? "business",
-          airline: "Qatar Airways",
-          stops: 1,
-          duration: "~18h",
-          bookingUrl: url,
-          scrapedAt: new Date().toISOString(),
-          isAward: true,
-        });
-      }
-    } catch (err) {
-      console.error(
-        `[QatarAward] Error for ${monitor.destination} ${monitor.month}:`,
-        err
-      );
     } finally {
       await page.close();
     }
@@ -216,32 +215,43 @@ export class QatarAwardAdapter implements ScrapeAdapter {
     return results;
   }
 
-  async scrapeWindow(_monitor: CashMonitor): Promise<FlightResult[]> {
-    return []; // not applicable
-  }
-
-  async scrapeMonth(monitor: AwardMonitor): Promise<FlightResult[]> {
-    // Try Seats.aero first (more reliable), fall back to direct scrape
-    const seatsAeroResults = await this.scrapeSeatsAero(monitor);
-    if (seatsAeroResults.length > 0) {
-      console.log(
-        `[QatarAward] Seats.aero returned ${seatsAeroResults.length} results for ${monitor.id}`
-      );
-      return seatsAeroResults;
-    }
-
-    return await this.scrapeQatarPrivilegeClub(monitor);
-  }
-
-  async isHealthy(): Promise<boolean> {
-    return true; // always try
+  private async initBrowser(): Promise<void> {
+    this.browser = await chromium.launch({
+      headless: true,
+      args: ["--no-sandbox", "--disable-setuid-sandbox"],
+    });
+    this.context = await this.browser.newContext({
+      proxy: PROXY_CONFIG,
+      userAgent:
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+      viewport: { width: 1280, height: 900 },
+      locale: "en-CA",
+    });
+    await this.context.addInitScript(() => {
+      Object.defineProperty(navigator, "webdriver", { get: () => false });
+    });
   }
 
   async close(): Promise<void> {
-    if (this.browser) {
-      await this.browser.close();
-      this.browser = null;
-      this.context = null;
-    }
+    await this.context?.close();
+    await this.browser?.close();
+    this.browser = null;
+    this.context = null;
+  }
+
+  private mapCabinToSeatsAero(
+    cabin?: string
+  ): string {
+    const map: Record<string, string> = {
+      economy: "Y",
+      premium_economy: "W",
+      business: "J",
+      first: "F",
+    };
+    return map[cabin ?? "business"] ?? "J";
+  }
+
+  private daysInMonth(year: number, month: number): string {
+    return new Date(year, month, 0).getDate().toString().padStart(2, "0");
   }
 }

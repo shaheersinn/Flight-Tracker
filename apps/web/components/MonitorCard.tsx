@@ -1,120 +1,148 @@
 // apps/web/components/MonitorCard.tsx
-import { Monitor, CashMonitor, AwardMonitor } from "@flight-tracker/shared";
-import { QuoteRow } from "@/lib/db";
 import Link from "next/link";
+import { CashMonitor } from "@flight-tracker/shared";
 
-function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString("en-CA", {
-    month: "short",
-    day: "numeric",
-  });
+interface Props {
+  monitor: CashMonitor;
+  latestQuote?: any;
+  prediction?: any;
+  allTimeBest?: number | null;
 }
 
-function formatMonth(yyyyMM: string): string {
-  const [year, month] = yyyyMM.split("-");
-  return new Date(parseInt(year), parseInt(month) - 1).toLocaleString("en-CA", {
-    month: "long",
-    year: "numeric",
-  });
-}
+export function MonitorCard({ monitor, latestQuote, prediction, allTimeBest }: Props) {
+  const price = latestQuote?.total_price ? parseFloat(latestQuote.total_price) : null;
+  const isAllTimeLow = price && allTimeBest && price <= allTimeBest;
+  const isBelowThreshold = price && monitor.alertThreshold && price < monitor.alertThreshold;
 
-function timeSince(dateStr: string): string {
-  const diff = Date.now() - new Date(dateStr).getTime();
-  const hours = Math.floor(diff / 3600000);
-  if (hours < 1) return "< 1h ago";
-  if (hours < 24) return `${hours}h ago`;
-  return `${Math.floor(hours / 24)}d ago`;
-}
+  // Vs prediction
+  let vsPrediction: number | null = null;
+  if (price && prediction?.predicted_mean) {
+    vsPrediction = price - parseFloat(prediction.predicted_mean);
+  }
 
-export function MonitorCard({
-  monitor,
-  latestQuote,
-}: {
-  monitor: Monitor;
-  latestQuote: QuoteRow | null;
-}) {
-  const isCash = monitor.kind === "cash";
-  const cm = monitor as CashMonitor;
-  const am = monitor as AwardMonitor;
+  const statusColor = isAllTimeLow
+    ? "var(--green)"
+    : isBelowThreshold
+    ? "var(--amber)"
+    : "var(--text-2)";
+
+  const dateLabel =
+    monitor.dateFrom === monitor.dateTo
+      ? monitor.dateFrom
+      : `${monitor.dateFrom} → ${monitor.dateTo}`;
 
   return (
-    <Link href={`/history/${monitor.id}`} className="block group">
-      <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 hover:border-sky-700 transition-colors">
-        {/* Route */}
+    <Link href={`/history/${monitor.id}`} className="block">
+      <div
+        className="glass p-5 rounded-xl cursor-pointer transition-all duration-200"
+        style={
+          isAllTimeLow
+            ? { borderColor: "rgba(34,197,94,0.4)", boxShadow: "0 0 20px rgba(34,197,94,0.1)" }
+            : {}
+        }
+      >
+        {/* Route Header */}
         <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <span className="text-white font-bold text-sm">
-              {isCash ? `${cm.origin} → ${cm.destination}` : `${am.origin} → ${am.destination}`}
+          <div>
+            <span className="text-xl font-bold" style={{ color: "var(--text-1)" }}>
+              {monitor.origin}
             </span>
-            {!isCash && (
-              <span className="text-xs bg-purple-900 text-purple-300 px-2 py-0.5 rounded-full">
-                Award
-              </span>
-            )}
+            <span className="mx-2" style={{ color: "var(--text-3)" }}>→</span>
+            <span className="text-xl font-bold" style={{ color: "var(--text-1)" }}>
+              {monitor.destination}
+            </span>
           </div>
-          <span className="text-sky-500 text-xs group-hover:text-sky-400">
-            View →
-          </span>
-        </div>
-
-        {/* Date window or month */}
-        <div className="text-gray-400 text-xs mb-3">
-          {isCash ? (
-            cm.dateFrom === cm.dateTo ? (
-              formatDate(cm.dateFrom)
-            ) : (
-              `${formatDate(cm.dateFrom)} – ${formatDate(cm.dateTo)}`
-            )
-          ) : (
-            <>
-              {formatMonth(am.month)} · {am.cabin ?? "Business"} class
-            </>
+          {isAllTimeLow && (
+            <span
+              className="text-xs px-2 py-0.5 rounded-full font-semibold"
+              style={{ background: "rgba(34,197,94,0.15)", color: "var(--green)" }}
+            >
+              🏆 BEST EVER
+            </span>
+          )}
+          {isBelowThreshold && !isAllTimeLow && (
+            <span
+              className="text-xs px-2 py-0.5 rounded-full font-semibold"
+              style={{ background: "rgba(245,158,11,0.15)", color: "var(--amber)" }}
+            >
+              🎯 DEAL
+            </span>
           )}
         </div>
 
+        {/* Date window */}
+        <p className="text-xs mb-3" style={{ color: "var(--text-3)" }}>
+          📅 {dateLabel}
+        </p>
+
         {/* Price */}
-        {latestQuote ? (
-          <div className="mt-2">
-            {latestQuote.total_price != null ? (
-              <div className="text-2xl font-bold text-green-400">
-                CAD ${latestQuote.total_price.toFixed(2)}
-              </div>
-            ) : latestQuote.points_cost != null ? (
-              <div className="text-2xl font-bold text-purple-400">
-                {latestQuote.points_cost.toLocaleString()} Avios
-                {latestQuote.cash_surcharge != null && (
-                  <span className="text-sm font-normal text-gray-400 ml-1">
-                    + ${latestQuote.cash_surcharge} {latestQuote.currency}
-                  </span>
-                )}
-              </div>
-            ) : (
-              <div className="text-gray-500 text-sm">No data yet</div>
-            )}
-
-            <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
-              <span>via {latestQuote.provider}</span>
-              <span>{latestQuote.airline}</span>
-              <span>{timeSince(latestQuote.checked_at)}</span>
-            </div>
-
-            {latestQuote.departure_date && (
-              <div className="text-xs text-gray-500 mt-1">
-                Departs {formatDate(latestQuote.departure_date)}
-                {latestQuote.stops === 0 && (
-                  <span className="ml-2 text-green-600">Nonstop</span>
-                )}
+        {price ? (
+          <div className="mb-3">
+            <span
+              className="price-badge text-3xl font-bold"
+              style={{ color: statusColor }}
+            >
+              CAD {price.toFixed(2)}
+            </span>
+            {allTimeBest && price !== allTimeBest && (
+              <div className="text-xs mt-1" style={{ color: "var(--text-3)" }}>
+                Best ever: CAD {allTimeBest.toFixed(2)}
               </div>
             )}
           </div>
         ) : (
-          <div className="text-gray-600 text-sm mt-2">No data yet</div>
+          <div
+            className="price-badge text-2xl font-bold mb-3"
+            style={{ color: "var(--text-3)" }}
+          >
+            —
+          </div>
         )}
 
-        {/* Monitor ID */}
-        <div className="mt-3 text-gray-700 text-xs font-mono truncate">
-          {monitor.id}
-        </div>
+        {/* Flight details */}
+        {latestQuote && (
+          <div className="text-xs space-y-1 mb-3" style={{ color: "var(--text-2)" }}>
+            <div>✈️ {latestQuote.airline}{latestQuote.flight_number ? ` ${latestQuote.flight_number}` : ""}</div>
+            <div>
+              ⏱ {latestQuote.duration} ·{" "}
+              {latestQuote.stops === 0 ? "Nonstop" : `${latestQuote.stops} stop(s)`}
+            </div>
+            <div>📅 Departs {latestQuote.departure_date?.toString().split("T")[0]}</div>
+          </div>
+        )}
+
+        {/* Prediction */}
+        {prediction && vsPrediction !== null && (
+          <div
+            className="text-xs p-2 rounded-lg mt-2"
+            style={{ background: "var(--bg-3)" }}
+          >
+            <span style={{ color: "var(--text-3)" }}>vs 7-day forecast: </span>
+            <span
+              className="price-badge font-semibold"
+              style={{ color: vsPrediction < 0 ? "var(--green)" : vsPrediction > 0 ? "var(--red)" : "var(--text-2)" }}
+            >
+              {vsPrediction > 0 ? "+" : ""}CAD {vsPrediction.toFixed(2)}
+            </span>
+            <span className="ml-2" style={{ color: "var(--text-3)" }}>
+              ({(parseFloat(prediction.confidence) * 100).toFixed(0)}% confidence)
+            </span>
+          </div>
+        )}
+
+        {/* Threshold */}
+        {monitor.alertThreshold && (
+          <div className="text-xs mt-2" style={{ color: "var(--text-3)" }}>
+            Alert threshold: CAD {monitor.alertThreshold}
+          </div>
+        )}
+
+        {/* via / provider */}
+        {latestQuote?.provider && (
+          <div className="text-xs mt-2" style={{ color: "var(--text-3)" }}>
+            via {latestQuote.provider}
+          </div>
+        )}
       </div>
     </Link>
   );

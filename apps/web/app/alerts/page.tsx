@@ -1,79 +1,103 @@
 // apps/web/app/alerts/page.tsx
-import { getRecentAlerts, AlertRow } from "@/lib/db";
+import { getRecentAlerts } from "../../lib/db";
 
 export const revalidate = 60;
 
-const alertTypeStyle: Record<string, string> = {
-  new_low: "bg-green-900 text-green-300",
-  price_drop: "bg-blue-900 text-blue-300",
-  award_available: "bg-purple-900 text-purple-300",
-  threshold_breach: "bg-yellow-900 text-yellow-300",
+const ALERT_LABELS: Record<string, { label: string; color: string; emoji: string }> = {
+  new_all_time_low: { label: "New All-Time Low", color: "var(--green)", emoji: "🏆" },
+  significant_drop: { label: "Significant Drop", color: "var(--amber)", emoji: "📉" },
+  threshold_breach: { label: "Threshold Breach", color: "var(--amber)", emoji: "🎯" },
+  award_available: { label: "Award Available", color: "var(--accent-light)", emoji: "🎫" },
+  anomaly_detected: { label: "Anomaly Detected", color: "#e879f9", emoji: "⚡" },
 };
 
 export default async function AlertsPage() {
-  let alerts: AlertRow[] = [];
-  try {
-    alerts = await getRecentAlerts(100);
-  } catch (err) {
-    console.error(err);
-  }
+  const alerts = await getRecentAlerts(30);
 
   return (
-    <div>
-      <h1 className="text-2xl font-bold text-white mb-6">Alert History</h1>
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold" style={{ color: "var(--text-1)" }}>
+          Alert History
+        </h1>
+        <p className="text-sm mt-1" style={{ color: "var(--text-2)" }}>
+          Recent Telegram alerts triggered by price changes
+        </p>
+      </div>
 
-      {alerts.length === 0 ? (
-        <div className="bg-gray-900 border border-gray-800 rounded-xl p-8 text-center text-gray-500">
-          No alerts sent yet.
-        </div>
-      ) : (
-        <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-gray-800 text-gray-500 text-xs">
-                <th className="text-left px-4 py-3">Sent At</th>
-                <th className="text-left px-4 py-3">Monitor</th>
-                <th className="text-left px-4 py-3">Type</th>
-                <th className="text-left px-4 py-3">Summary</th>
-              </tr>
-            </thead>
-            <tbody>
-              {alerts.map((alert) => (
-                <tr
-                  key={alert.id}
-                  className="border-b border-gray-800/50 hover:bg-gray-800/20"
-                >
-                  <td className="px-4 py-3 text-gray-400 text-xs">
-                    {new Date(alert.sent_at).toLocaleString("en-CA", {
-                      timeZone: "America/Toronto",
-                      month: "short",
-                      day: "numeric",
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
-                  </td>
-                  <td className="px-4 py-3 text-gray-300 font-mono text-xs">
+      <div className="space-y-3">
+        {alerts.map((alert: any) => {
+          const meta = ALERT_LABELS[alert.alert_type] ?? {
+            label: alert.alert_type,
+            color: "var(--text-2)",
+            emoji: "🔔",
+          };
+
+          return (
+            <div key={alert.id} className="glass p-4 rounded-xl flex gap-4">
+              <div
+                className="text-2xl w-10 h-10 flex items-center justify-center rounded-lg flex-shrink-0"
+                style={{ background: `${meta.color}18` }}
+              >
+                {meta.emoji}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-3 flex-wrap">
+                  <span
+                    className="text-xs px-2 py-0.5 rounded-full font-semibold"
+                    style={{ background: `${meta.color}20`, color: meta.color }}
+                  >
+                    {meta.label}
+                  </span>
+                  <span className="text-xs" style={{ color: "var(--text-3)" }}>
                     {alert.monitor_id}
-                  </td>
-                  <td className="px-4 py-3">
-                    <span
-                      className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                        alertTypeStyle[alert.alert_type] ??
-                        "bg-gray-800 text-gray-300"
-                      }`}
-                    >
-                      {alert.alert_type.replace(/_/g, " ")}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-gray-400 text-xs max-w-xs truncate">
-                    {alert.message}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+                  </span>
+                </div>
+                {alert.total_price && (
+                  <div
+                    className="price-badge text-lg font-bold mt-1"
+                    style={{ color: "var(--text-1)" }}
+                  >
+                    CAD {parseFloat(alert.total_price).toFixed(2)}
+                  </div>
+                )}
+                {alert.points_cost && (
+                  <div
+                    className="price-badge text-lg font-bold mt-1"
+                    style={{ color: "var(--accent-light)" }}
+                  >
+                    {parseInt(alert.points_cost).toLocaleString()} Avios
+                  </div>
+                )}
+                {alert.departure_date && (
+                  <div className="text-xs mt-0.5" style={{ color: "var(--text-3)" }}>
+                    Departs {alert.departure_date?.toString().split("T")[0]} · {alert.airline}
+                  </div>
+                )}
+              </div>
+              <div
+                className="text-xs text-right flex-shrink-0"
+                style={{ color: "var(--text-3)" }}
+              >
+                {new Date(alert.sent_at).toLocaleString("en-CA", {
+                  timeZone: "America/Toronto",
+                  dateStyle: "short",
+                  timeStyle: "short",
+                })}
+              </div>
+            </div>
+          );
+        })}
+
+        {alerts.length === 0 && (
+          <div
+            className="glass p-8 rounded-xl text-center text-sm"
+            style={{ color: "var(--text-3)" }}
+          >
+            No alerts yet. Alerts will appear here once the tracker detects price drops.
+          </div>
+        )}
+      </div>
     </div>
   );
 }

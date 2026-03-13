@@ -2,18 +2,18 @@
   "name": "flight-tracker",
   "private": true,
   "workspaces": [
-    "packages/*",
-    "apps/*"
+    "apps/*",
+    "packages/*"
   ],
   "scripts": {
-    "worker:scrape": "npm run scrape --workspace=apps/worker",
-    "worker:build": "npm run build --workspace=apps/worker",
-    "web:dev": "npm run dev --workspace=apps/web",
-    "web:build": "npm run build --workspace=apps/web",
-    "build": "npm run build --workspaces --if-present",
-    "install:playwright": "npx playwright install chromium --with-deps"
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "worker:scrape": "cd apps/worker && npm run scrape",
+    "worker:predict": "cd apps/worker && npm run predict",
+    "db:migrate": "cd apps/worker && npm run db:migrate"
   },
   "devDependencies": {
+    "turbo": "^2.3.0",
     "typescript": "^5.4.0"
   }
 }

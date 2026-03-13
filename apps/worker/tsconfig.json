@@ -1,22 +1,18 @@
 {
   "compilerOptions": {
-    "target": "ES2022",
-    "module": "CommonJS",
-    "moduleResolution": "node",
-    "esModuleInterop": true,
+    "target": "ES2020",
+    "module": "commonjs",
+    "lib": ["ES2020"],
     "strict": true,
-    "outDir": "dist",
-    "rootDir": "src",
+    "esModuleInterop": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,
+    "outDir": "./dist",
+    "rootDir": "./src",
     "paths": {
       "@flight-tracker/shared": ["../../packages/shared/src/index.ts"]
     }
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist"],
-  "ts-node": {
-    "transpileOnly": true,
-    "files": true
-  }
+  "exclude": ["node_modules", "dist"]
 }

@@ -1,37 +1,11 @@
 // packages/shared/src/types.ts
 
-export type MonitorKind = "cash" | "award";
-
-export type CashMonitor = {
-  id: string;
-  kind: "cash";
-  origin: string;
-  destination: string;
-  dateFrom: string; // YYYY-MM-DD
-  dateTo: string;   // YYYY-MM-DD
-  tripType: "one_way" | "round_trip";
-  maxStops?: number;
-  preferredCarriers?: string[];
-};
-
-export type AwardMonitor = {
-  id: string;
-  kind: "award";
-  airline: "Qatar Airways";
-  origin: string;
-  destination: string;
-  month: string; // YYYY-MM format
-  cabin?: "economy" | "premium_economy" | "business" | "first";
-};
-
-export type Monitor = CashMonitor | AwardMonitor;
-
-export type FlightResult = {
+export interface FlightResult {
   provider: string;
-  monitorId: string;
   origin: string;
   destination: string;
   departureDate: string;
+  arrivalDate?: string;
   totalPrice?: number;
   currency?: string;
   pointsCost?: number;
@@ -43,12 +17,40 @@ export type FlightResult = {
   duration: string;
   bookingUrl: string;
   scrapedAt: string;
-  isAward: boolean;
-};
+  monitorId: string;
+  kind: "cash" | "award";
+}
 
-export type AlertSummary = {
-  newLows: FlightResult[];
-  significantDrops: FlightResult[];
-  awardAvailability: FlightResult[];
-  anomalies: FlightResult[];
-};
+export interface AlertRecord {
+  monitorId: string;
+  alertType:
+    | "new_all_time_low"
+    | "significant_drop"
+    | "threshold_breach"
+    | "award_available"
+    | "anomaly_detected";
+  quote: FlightResult;
+  previousBest?: number;
+  dropPercent?: number;
+}
+
+export interface RunSummary {
+  startedAt: string;
+  monitorsChecked: number;
+  quotesFound: number;
+  alertsTriggered: number;
+  errors: string[];
+  cashResults: FlightResult[];
+  awardResults: FlightResult[];
+  alerts: AlertRecord[];
+}
+
+export interface Prediction {
+  monitorId: string;
+  predictedMean: number;
+  predictedMin: number;
+  predictedMax: number;
+  confidence: number;
+  forecastDays: number;
+  generatedAt: string;
+}

@@ -1,187 +1,255 @@
 // apps/worker/src/telegram/bot.ts
-//
-// Sends ONE consolidated Telegram message per scraper run.
-// All price drops, new lows, and award availability are bundled together.
+// Sends ONE consolidated Telegram message per daily run (not per monitor)
 
 import TelegramBot from "node-telegram-bot-api";
-import { FlightResult } from "@flight-tracker/shared";
-
-export interface AlertItem {
-  result: FlightResult;
-  alertType: "new_low" | "price_drop" | "award_available" | "threshold_breach";
-  previousPrice?: number;
-  previousPoints?: number;
-  avgPrice?: number;
-  isNewLow?: boolean;
-}
+import { FlightResult, AlertRecord, RunSummary } from "@flight-tracker/shared";
 
 export class TelegramAlerter {
   private bot: TelegramBot;
   private chatId: string;
 
-  constructor(token: string, chatId: string) {
-    this.bot = new TelegramBot(token);
+  constructor() {
+    const token = process.env.TELEGRAM_BOT_TOKEN;
+    const chatId = process.env.TELEGRAM_CHAT_ID;
+
+    if (!token || !chatId) {
+      throw new Error(
+        "TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID must be set in environment."
+      );
+    }
+
+    this.bot = new TelegramBot(token, { polling: false });
     this.chatId = chatId;
   }
 
-  /** Send one condensed message summarising all alerts from this run */
-  async sendConsolidatedAlert(alerts: AlertItem[]): Promise<string | null> {
-    if (alerts.length === 0) return null;
+  /**
+   * Send ONE consolidated alert message for the entire run.
+   * Collects all alerts, deals, and award availability into a single message.
+   */
+  async sendDailyDigest(summary: RunSummary): Promise<string | null> {
+    if (summary.alerts.length === 0 && summary.awardResults.length === 0) {
+      console.log("[Telegram] No alerts to send today.");
+      return null;
+    }
 
-    const message = this.buildConsolidatedMessage(alerts);
+    const message = this.formatDigest(summary);
 
     try {
-      const sent = await this.bot.sendMessage(this.chatId, message, {
-        parse_mode: "Markdown",
-        disable_web_page_preview: true,
-      });
-      return sent.message_id.toString();
-    } catch (err) {
-      console.error("[Telegram] Failed to send consolidated alert:", err);
+      // Telegram messages have a 4096 char limit; split if needed
+      const chunks = this.splitMessage(message, 4000);
+
+      let lastMessageId: string | null = null;
+      for (const chunk of chunks) {
+        const result = await this.bot.sendMessage(this.chatId, chunk, {
+          parse_mode: "Markdown",
+          disable_web_page_preview: true,
+        });
+        lastMessageId = result.message_id.toString();
+
+        // Small delay between multi-part messages
+        if (chunks.length > 1) {
+          await new Promise((r) => setTimeout(r, 500));
+        }
+      }
+
+      console.log(`[Telegram] Digest sent (${chunks.length} part(s)).`);
+      return lastMessageId;
+    } catch (err: any) {
+      console.error("[Telegram] Send failed:", err.message);
       throw err;
     }
   }
 
-  /** Send a plain info/status message (for health reports etc.) */
-  async sendMessage(text: string): Promise<void> {
+  /**
+   * Send a simple text notification (for errors/health alerts)
+   */
+  async sendAdminAlert(message: string): Promise<void> {
     try {
-      await this.bot.sendMessage(this.chatId, text, {
-        parse_mode: "Markdown",
-        disable_web_page_preview: true,
-      });
-    } catch (err) {
-      console.error("[Telegram] sendMessage error:", err);
+      await this.bot.sendMessage(
+        this.chatId,
+        `⚠️ *Admin Alert*\n\n${message}`,
+        { parse_mode: "Markdown" }
+      );
+    } catch (err: any) {
+      console.error("[Telegram] Admin alert failed:", err.message);
     }
   }
 
-  private buildConsolidatedMessage(alerts: AlertItem[]): string {
+  private formatDigest(summary: RunSummary): string {
     const now = new Date().toLocaleString("en-CA", {
       timeZone: "America/Toronto",
       dateStyle: "medium",
       timeStyle: "short",
     });
 
-    const cashAlerts = alerts.filter((a) => !a.result.isAward);
-    const awardAlerts = alerts.filter((a) => a.result.isAward);
-
     const lines: string[] = [
-      `✈️ *Flight Tracker Daily Report*`,
-      `🕐 ${now} EDT`,
-      `📊 ${alerts.length} alert${alerts.length !== 1 ? "s" : ""} found`,
-      ``,
+      `✈️ *Flight Price Daily Digest*`,
+      `📅 ${now} (Toronto)`,
+      `━━━━━━━━━━━━━━━━━━━━`,
+      "",
     ];
 
-    // ── Cash Fare Alerts ──────────────────────────────────────────────────
+    // ─── Cash Fare Alerts ───────────────────────────────────────────
+    const cashAlerts = summary.alerts.filter(
+      (a) => a.quote.kind === "cash"
+    );
+
     if (cashAlerts.length > 0) {
-      lines.push(`💰 *CASH FARE ALERTS (${cashAlerts.length})*`);
-      lines.push(`${"─".repeat(30)}`);
+      lines.push("🏷️ *CASH FARE ALERTS*");
+      lines.push("");
 
       for (const alert of cashAlerts) {
-        const r = alert.result;
-        const price = r.totalPrice
-          ? `*CAD $${r.totalPrice.toFixed(2)}*`
-          : "Price N/A";
-        const badge = this.alertBadge(alert.alertType);
-        const routeEmoji = this.routeEmoji(r.origin, r.destination);
-
+        const q = alert.quote;
+        const emoji = this.alertEmoji(alert.alertType);
         lines.push(
-          `${routeEmoji} ${r.origin} → ${r.destination} | ${r.departureDate}`
+          `${emoji} *${q.origin} → ${q.destination}* — ${alert.alertType.replace(/_/g, " ").toUpperCase()}`
         );
-        lines.push(`  ${price}   ${badge}`);
-        lines.push(`  ✈️ ${r.airline}${r.flightNumber ? ` ${r.flightNumber}` : ""}`);
-        lines.push(`  ⏱ ${r.duration} | ${this.stopsLabel(r.stops)}`);
+        lines.push(`   💰 CAD ${q.totalPrice?.toFixed(2)}`);
+        lines.push(`   📆 ${q.departureDate}`);
+        lines.push(`   ✈️ ${q.airline}${q.flightNumber ? " " + q.flightNumber : ""}`);
+        lines.push(`   ⏱ ${q.duration} | ${q.stops === 0 ? "Nonstop" : q.stops + " stop(s)"}`);
 
-        if (alert.previousPrice && alert.previousPrice > r.totalPrice!) {
-          const saved = (alert.previousPrice - r.totalPrice!).toFixed(2);
-          lines.push(`  📉 Down $${saved} from previous $${alert.previousPrice.toFixed(2)}`);
+        if (alert.previousBest) {
+          const saving = alert.previousBest - (q.totalPrice ?? 0);
+          lines.push(`   📉 Previous best: CAD ${alert.previousBest.toFixed(2)} (save CAD ${saving.toFixed(2)})`);
         }
-        if (alert.avgPrice) {
-          const diff = (r.totalPrice! - alert.avgPrice).toFixed(2);
-          const sign = parseFloat(diff) < 0 ? "" : "+";
-          lines.push(`  📊 ${sign}$${diff} vs 14-day avg ($${alert.avgPrice.toFixed(2)})`);
+        if (alert.dropPercent) {
+          lines.push(`   📊 Price dropped ${alert.dropPercent.toFixed(1)}%`);
         }
 
-        lines.push(`  🔗 [Book Now](${r.bookingUrl})`);
-        lines.push(``);
+        lines.push(`   🔗 [Book Now](${q.bookingUrl})`);
+        lines.push("");
       }
     }
 
-    // ── Award Alerts ──────────────────────────────────────────────────────
-    if (awardAlerts.length > 0) {
-      lines.push(`🏆 *QATAR AWARD ALERTS (${awardAlerts.length})*`);
-      lines.push(`${"─".repeat(30)}`);
+    // ─── Award Availability ─────────────────────────────────────────
+    const awardAlerts = summary.alerts.filter(
+      (a) => a.quote.kind === "award"
+    );
+    const newAwardResults = summary.awardResults;
 
-      for (const alert of awardAlerts) {
-        const r = alert.result;
-        const destName = this.destName(r.destination);
-        const cabin = (r.cabin ?? "business").toUpperCase();
+    if (awardAlerts.length > 0 || newAwardResults.length > 0) {
+      lines.push("🎫 *QATAR AIRWAYS AWARD AVAILABILITY*");
+      lines.push("");
 
-        lines.push(
-          `🌍 YYZ → ${destName} (${r.destination}) | ${this.formatMonth(r.departureDate)}`
-        );
-        lines.push(`  🏷️ ${cabin} CLASS — AVAILABILITY FOUND`);
+      const allAwardItems = [
+        ...awardAlerts.map((a) => a.quote),
+        ...newAwardResults.filter(
+          (r) =>
+            !awardAlerts.some(
+              (a) =>
+                (a.quote as any).fingerprint ===
+                (r as any).fingerprint
+            )
+        ),
+      ];
 
-        if (r.pointsCost) {
-          const surcharge = r.cashSurcharge
-            ? ` + $${r.cashSurcharge} ${r.currency}`
-            : "";
-          lines.push(`  💎 *${r.pointsCost.toLocaleString()} Avios*${surcharge}`);
+      // Group by destination
+      const byDest: Record<string, FlightResult[]> = {};
+      for (const q of allAwardItems) {
+        const key = `${q.origin}→${q.destination}`;
+        if (!byDest[key]) byDest[key] = [];
+        byDest[key].push(q);
+      }
+
+      for (const [route, flights] of Object.entries(byDest)) {
+        lines.push(`✈️ *${route}* (Qatar Business / Qsuite)`);
+
+        // Group by month
+        const byMonth: Record<string, FlightResult[]> = {};
+        for (const f of flights) {
+          const month = f.departureDate?.slice(0, 7) ?? "Unknown";
+          if (!byMonth[month]) byMonth[month] = [];
+          byMonth[month].push(f);
         }
 
-        if (alert.previousPoints && r.pointsCost && r.pointsCost < alert.previousPoints) {
-          const saved = alert.previousPoints - r.pointsCost;
-          lines.push(`  📉 Down ${saved.toLocaleString()} Avios vs previous`);
+        for (const [month, mFlights] of Object.entries(byMonth)) {
+          const cheapest = mFlights.reduce((min, f) =>
+            (f.pointsCost ?? Infinity) < (min.pointsCost ?? Infinity) ? f : min
+          );
+          const label = this.formatMonth(month);
+          lines.push(`   📅 *${label}*: ${cheapest.pointsCost?.toLocaleString()} Avios + CAD ${cheapest.cashSurcharge?.toFixed(2) ?? "?"}`);
         }
 
-        lines.push(`  🔗 [Book on Qatar](${r.bookingUrl})`);
-        lines.push(``);
+        lines.push(`   🔗 [Search Qatar](https://www.qatarairways.com/en-ca/privilege-club/redeem-avios.html)`);
+        lines.push("");
       }
     }
 
-    // ── Footer ────────────────────────────────────────────────────────────
-    lines.push(`${"─".repeat(30)}`);
-    lines.push(`_Flight Tracker • Next check in ~24h_`);
+    // ─── Best Cash Fares Summary ────────────────────────────────────
+    if (summary.cashResults.length > 0) {
+      lines.push("📋 *TODAY'S BEST CASH FARES (all monitors)*");
+      lines.push("");
+
+      // Group by route, find cheapest per route
+      const byRoute: Record<string, FlightResult[]> = {};
+      for (const r of summary.cashResults) {
+        const key = `${r.origin}→${r.destination}`;
+        if (!byRoute[key]) byRoute[key] = [];
+        byRoute[key].push(r);
+      }
+
+      for (const [route, flights] of Object.entries(byRoute)) {
+        const cheapest = flights.reduce((min, f) =>
+          (f.totalPrice ?? Infinity) < (min.totalPrice ?? Infinity) ? f : min
+        );
+        lines.push(
+          `   ${route}: *CAD ${cheapest.totalPrice?.toFixed(2)}* on ${cheapest.departureDate} via ${cheapest.airline}`
+        );
+      }
+      lines.push("");
+    }
+
+    // ─── Run Stats ──────────────────────────────────────────────────
+    lines.push("━━━━━━━━━━━━━━━━━━━━");
+    lines.push(
+      `📊 Checked ${summary.monitorsChecked} monitors | Found ${summary.quotesFound} quotes | ${summary.alertsTriggered} alerts triggered`
+    );
+
+    if (summary.errors.length > 0) {
+      lines.push(`⚠️ ${summary.errors.length} error(s) — check logs.`);
+    }
 
     return lines.join("\n");
   }
 
-  private alertBadge(type: AlertItem["alertType"]): string {
-    const badges: Record<AlertItem["alertType"], string> = {
-      new_low: "🏆 NEW ALL-TIME LOW",
-      price_drop: "📉 PRICE DROP",
-      award_available: "🎫 AWARD AVAILABLE",
-      threshold_breach: "🎯 BELOW THRESHOLD",
-    };
-    return badges[type];
-  }
-
-  private routeEmoji(origin: string, destination: string): string {
-    if (origin === "YYC" || destination === "YYC") return "🏔️";
-    if (origin === "YYZ" || destination === "YYZ") return "🗼";
-    return "✈️";
-  }
-
-  private stopsLabel(stops: number): string {
-    if (stops === 0) return "Nonstop";
-    return `${stops} stop${stops > 1 ? "s" : ""}`;
-  }
-
-  private destName(code: string): string {
-    const names: Record<string, string> = {
-      ISB: "Islamabad, PK",
-      IST: "Istanbul (IST)",
-      SAW: "Istanbul Sabiha (SAW)",
-    };
-    return names[code] ?? code;
-  }
-
-  private formatMonth(dateStr: string): string {
-    if (!dateStr) return "";
-    try {
-      const d = new Date(dateStr + "-01");
-      return d.toLocaleString("en-CA", { month: "long", year: "numeric" });
-    } catch {
-      return dateStr;
+  private alertEmoji(type: string): string {
+    switch (type) {
+      case "new_all_time_low": return "🏆";
+      case "significant_drop": return "📉";
+      case "threshold_breach": return "🎯";
+      case "award_available": return "🎫";
+      case "anomaly_detected": return "⚡";
+      default: return "🔔";
     }
+  }
+
+  private formatMonth(ym: string): string {
+    const [year, month] = ym.split("-");
+    const months = [
+      "", "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+      "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+    ];
+    return `${months[parseInt(month)]} ${year}`;
+  }
+
+  private splitMessage(text: string, maxLen: number): string[] {
+    if (text.length <= maxLen) return [text];
+
+    const chunks: string[] = [];
+    const lines = text.split("\n");
+    let current = "";
+
+    for (const line of lines) {
+      if ((current + "\n" + line).length > maxLen) {
+        chunks.push(current.trim());
+        current = line;
+      } else {
+        current += (current ? "\n" : "") + line;
+      }
+    }
+    if (current.trim()) chunks.push(current.trim());
+
+    return chunks;
   }
 }

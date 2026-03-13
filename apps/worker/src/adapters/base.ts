@@ -1,33 +1,46 @@
 // apps/worker/src/adapters/base.ts
-import { CashMonitor, AwardMonitor, FlightResult } from "@flight-tracker/shared";
+import { FlightResult, CashMonitor, AwardMonitor } from "@flight-tracker/shared";
 
 export interface ScrapeAdapter {
   name: string;
-  /** Scrape a date-window cash monitor */
+  priority: number;
   scrapeWindow(monitor: CashMonitor): Promise<FlightResult[]>;
-  /** Scrape a full-month award monitor */
   scrapeMonth(monitor: AwardMonitor): Promise<FlightResult[]>;
-  /** Quick health check */
   isHealthy(): Promise<boolean>;
-  /** Cleanup resources */
-  close(): Promise<void>;
 }
 
-/** Build a unique fingerprint to deduplicate quotes in the DB */
 export function buildFingerprint(result: FlightResult): string {
-  const key = [
+  const parts = [
     result.monitorId,
-    result.departureDate,
+    result.provider,
+    result.departureDate ?? "",
     result.airline,
     result.flightNumber ?? "",
-    result.totalPrice ?? result.pointsCost ?? 0,
-    result.provider,
-  ].join("|");
-  return Buffer.from(key).toString("base64");
+    result.stops.toString(),
+    result.totalPrice?.toString() ?? result.pointsCost?.toString() ?? "",
+  ];
+  return Buffer.from(parts.join("|")).toString("base64").slice(0, 64);
 }
 
-/** Sleep helper with optional jitter */
-export async function sleep(ms: number, jitter = 0): Promise<void> {
-  const delay = ms + Math.floor(Math.random() * jitter);
-  return new Promise((resolve) => setTimeout(resolve, delay));
+export async function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export async function retryWithBackoff<T>(
+  fn: () => Promise<T>,
+  maxRetries = 3,
+  baseDelayMs = 5000
+): Promise<T> {
+  let lastErr: Error | unknown;
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastErr = err;
+      const delay = baseDelayMs * Math.pow(2, attempt);
+      console.warn(`Attempt ${attempt + 1} failed. Retrying in ${delay}ms...`);
+      await sleep(delay);
+    }
+  }
+  throw lastErr;
 }

@@ -1,94 +1,107 @@
 // apps/web/app/page.tsx
-import { monitors } from "@flight-tracker/shared";
-import { getLatestQuotePerMonitor, getRecentRuns, QuoteRow, RunRow } from "@/lib/db";
-import { MonitorCard } from "@/components/MonitorCard";
+import {
+  getLatestQuotes,
+  getLatestPredictions,
+  getAllTimeBest,
+  getRecentRuns,
+  getRapidApiUsage,
+} from "../lib/db";
+import { monitors, cashMonitors, awardMonitors } from "@flight-tracker/shared";
+import { MonitorCard } from "../components/MonitorCard";
+import { AwardCard } from "../components/AwardCard";
+import { RunStatusBar } from "../components/RunStatusBar";
 
-export const revalidate = 300; // 5 minutes
+export const revalidate = 300; // Revalidate every 5 minutes
 
 export default async function HomePage() {
-  let latestQuotes: QuoteRow[] = [];
-  let recentRuns: RunRow[] = [];
-
-  try {
-    [latestQuotes, recentRuns] = await Promise.all([
-      getLatestQuotePerMonitor(),
-      getRecentRuns(5),
+  const [quotes, predictions, bestPrices, runs, rapidApiUsed] =
+    await Promise.all([
+      getLatestQuotes(),
+      getLatestPredictions(),
+      getAllTimeBest(),
+      getRecentRuns(1),
+      getRapidApiUsage(),
     ]);
-  } catch (err) {
-    console.error("DB error:", err);
-  }
 
-  const quoteMap = new Map(latestQuotes.map((q) => [q.monitor_id, q]));
-  const lastRun = recentRuns[0];
-
-  const cashMonitors = monitors.filter((m) => m.kind === "cash");
-  const awardMonitors = monitors.filter((m) => m.kind === "award");
+  const lastRun = runs[0] ?? null;
 
   return (
-    <div>
+    <div className="space-y-8">
       {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-white mb-1">Flight Price Dashboard</h1>
-        <p className="text-gray-400 text-sm">
-          Monitoring {monitors.length} routes · Updates daily at 11:17 UTC
-        </p>
-        {lastRun && (
-          <div className="mt-3 flex items-center gap-3 text-xs">
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight" style={{ color: "var(--text-1)" }}>
+            ✈️ Flight Price Tracker
+          </h1>
+          <p className="mt-1 text-sm" style={{ color: "var(--text-2)" }}>
+            Daily automated monitoring — YYC/YYZ routes + Qatar Airways awards
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          {/* RapidAPI Usage */}
+          <div className="glass px-3 py-1.5 text-xs flex items-center gap-2">
+            <span style={{ color: "var(--text-2)" }}>RapidAPI</span>
             <span
-              className={`px-2 py-1 rounded-full font-medium ${
-                lastRun.status === "success"
-                  ? "bg-green-900 text-green-300"
-                  : lastRun.status === "partial"
-                  ? "bg-yellow-900 text-yellow-300"
-                  : "bg-red-900 text-red-300"
-              }`}
+              className="price-badge text-sm"
+              style={{
+                color: rapidApiUsed >= 10 ? "var(--red)" : rapidApiUsed >= 7 ? "var(--amber)" : "var(--green)",
+              }}
             >
-              Last run: {lastRun.status}
+              {rapidApiUsed}/10
             </span>
-            <span className="text-gray-500">
-              {new Date(lastRun.started_at).toLocaleString("en-CA", {
-                timeZone: "America/Toronto",
-                dateStyle: "medium",
-                timeStyle: "short",
-              })}{" "}
-              EDT
-            </span>
-            <span className="text-gray-500">
-              {lastRun.monitors_checked} monitors · {lastRun.quotes_saved} quotes
-            </span>
+            <span style={{ color: "var(--text-3)" }}>this month</span>
           </div>
-        )}
+        </div>
       </div>
 
-      {/* Cash Fare Section */}
-      <section className="mb-10">
-        <h2 className="text-lg font-semibold text-gray-200 mb-4 flex items-center gap-2">
-          <span>💰</span> Cash Fare Monitors
+      {/* Last Run Status */}
+      {lastRun && <RunStatusBar run={lastRun} />}
+
+      {/* Cash Monitors */}
+      <section>
+        <h2 className="text-lg font-semibold mb-4 flex items-center gap-2" style={{ color: "var(--text-1)" }}>
+          <span>🏷️</span> Domestic Cash Fares
+          <span className="text-sm font-normal ml-1" style={{ color: "var(--text-3)" }}>
+            ({cashMonitors.length} monitors)
+          </span>
         </h2>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {cashMonitors.map((monitor) => (
-            <MonitorCard
-              key={monitor.id}
-              monitor={monitor}
-              latestQuote={quoteMap.get(monitor.id) ?? null}
-            />
-          ))}
+          {cashMonitors.map((monitor) => {
+            const quote = quotes.find((q) => q.monitor_id === monitor.id);
+            const pred = predictions.find((p) => p.monitor_id === monitor.id);
+            const best = bestPrices.find((b) => b.monitor_id === monitor.id);
+            return (
+              <MonitorCard
+                key={monitor.id}
+                monitor={monitor}
+                latestQuote={quote}
+                prediction={pred}
+                allTimeBest={best?.best_price ? parseFloat(best.best_price) : null}
+              />
+            );
+          })}
         </div>
       </section>
 
-      {/* Award Section */}
+      {/* Award Monitors */}
       <section>
-        <h2 className="text-lg font-semibold text-gray-200 mb-4 flex items-center gap-2">
-          <span>🏆</span> Qatar Airways Award Monitors
+        <h2 className="text-lg font-semibold mb-4 flex items-center gap-2" style={{ color: "var(--text-1)" }}>
+          <span>🎫</span> Qatar Airways Award Availability
+          <span className="text-sm font-normal ml-1" style={{ color: "var(--text-3)" }}>
+            (Business / Qsuite)
+          </span>
         </h2>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {awardMonitors.map((monitor) => (
-            <MonitorCard
-              key={monitor.id}
-              monitor={monitor}
-              latestQuote={quoteMap.get(monitor.id) ?? null}
-            />
-          ))}
+          {awardMonitors.map((monitor) => {
+            const quote = quotes.find((q) => q.monitor_id === monitor.id);
+            return (
+              <AwardCard
+                key={monitor.id}
+                monitor={monitor}
+                latestQuote={quote}
+              />
+            );
+          })}
         </div>
       </section>
     </div>
