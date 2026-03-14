@@ -1,9 +1,20 @@
 {
-  "last_updated": null,
-  "runs": [],
+  "last_updated": "2026-03-14T12:36:59Z",
+  "runs": [
+    {
+      "run_id": "20260314_123659",
+      "timestamp": "2026-03-14T12:36:59Z",
+      "monitors_done": 13,
+      "cash_quotes": 0,
+      "award_slots": 0,
+      "alerts": 0,
+      "errors": 0,
+      "rapidapi_used": 7
+    }
+  ],
   "quotes": {},
   "best_ever": {},
   "award_slots": {},
-  "rapidapi_calls_this_month": 0,
-  "rapidapi_month": ""
+  "rapidapi_calls_this_month": 7,
+  "rapidapi_month": "2026-03"
 }
