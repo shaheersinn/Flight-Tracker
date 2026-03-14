@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>✈ Flight Price Tracker</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400&family=EB+Garamond:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet" />
+  <style>
+    /* ── CSS Variables ──────────────────────────────────────────────────── */
+    :root {
+      --bg0:    #FBF7F0;
+      --bg1:    #F7F2E8;
+      --bg2:    #F2EBD9;
+      --bg3:    #EDE3CC;
+      --bg4:    #E4D7BA;
+      --gold:   #A8782A;
+      --gold2:  #C8952E;
+      --gold3:  #D4A84B;
+      --gold-pale: rgba(168,120,42,0.10);
+      --gold-rule: rgba(168,120,42,0.30);
+      --ink0:   #2C2318;
+      --ink1:   #4A3B28;
+      --ink2:   #7A6347;
+      --ink3:   #B8A080;
+      --green:  #3D7A4A;
+      --red:    #8B3030;
+      --amber:  #8B6B1A;
+      --border: rgba(168,120,42,0.15);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html { background: var(--bg0); }
+
+    body {
+      background-color: var(--bg0);
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='200' height='200' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
+      color: var(--ink1);
+      font-family: 'EB Garamond', Georgia, serif;
+      font-size: 16px;
+      -webkit-font-smoothing: antialiased;
+      min-height: 100vh;
+    }
+
+    /* ── Nav ────────────────────────────────────────────────────────────── */
+    nav {
+      background: var(--bg1);
+      border-bottom: 1px solid var(--border);
+      position: sticky; top: 0; z-index: 50;
+    }
+    .nav-gold-line {
+      height: 2px;
+      background: linear-gradient(90deg, var(--gold), var(--gold2), transparent);
+    }
+    .nav-inner {
+      max-width: 1200px; margin: 0 auto;
+      padding: 0 24px;
+      display: flex; align-items: center; justify-content: space-between;
+      height: 52px;
+    }
+    .nav-brand {
+      font-family: 'Cormorant Garamond', serif; font-weight: 600; font-size: 18px;
+      color: var(--ink0); text-decoration: none;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .nav-brand .ornament { color: var(--gold3); font-size: 7px; opacity: 0.8; }
+    .nav-links { display: flex; gap: 28px; }
+    .nav-links a {
+      font-family: 'Cormorant Garamond', serif; font-size: 14px; font-weight: 500;
+      color: var(--ink2); text-decoration: none; letter-spacing: 0.04em;
+      transition: color 0.15s;
+    }
+    .nav-links a:hover { color: var(--gold); }
+
+    /* ── Layout ─────────────────────────────────────────────────────────── */
+    main { max-width: 1200px; margin: 0 auto; padding: 32px 24px; }
+
+    /* ── Hero ───────────────────────────────────────────────────────────── */
+    .hero {
+      background: var(--bg1);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 36px 40px;
+      margin-bottom: 40px;
+      position: relative; overflow: hidden;
+    }
+    .hero-top-rule {
+      position: absolute; top: 0; left: 0; width: 60%; height: 2px;
+      background: linear-gradient(90deg, var(--gold), var(--gold2), transparent);
+    }
+    .hero-watermark {
+      position: absolute; right: 32px; bottom: -10px;
+      font-size: 110px; color: var(--gold); opacity: 0.04;
+      font-family: 'Cormorant Garamond', serif; user-select: none;
+      pointer-events: none; line-height: 1;
+    }
+    .hero h1 {
+      font-family: 'Cormorant Garamond', serif; font-size: 36px;
+      font-weight: 600; color: var(--ink0); line-height: 1.1; margin-bottom: 8px;
+    }
+    .hero-divider {
+      display: flex; align-items: center; gap: 0; margin-bottom: 8px;
+    }
+    .hero-divider .line { height: 1px; width: 40px; background: var(--gold-rule); }
+    .hero-divider .diamond { color: var(--gold3); font-size: 8px; margin: 0 8px; }
+    .hero p {
+      font-family: 'EB Garamond', serif; font-style: italic;
+      font-size: 14px; color: var(--ink2);
+    }
+    .hero-meta {
+      display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; position: relative;
+    }
+    .meta-chip {
+      background: var(--bg2); border: 1px solid var(--border); border-radius: 2px;
+      padding: 5px 12px; font-family: 'Cormorant Garamond', serif;
+      font-size: 12px; color: var(--ink2); display: flex; gap: 6px; align-items: center;
+    }
+    .meta-chip .val { font-weight: 700; color: var(--ink0); }
+    .meta-chip .val.green { color: var(--green); }
+    .meta-chip .val.red   { color: var(--red); }
+    .meta-chip .val.amber { color: var(--amber); }
+
+    /* ── Section header ─────────────────────────────────────────────────── */
+    .section-head {
+      display: flex; align-items: center; gap: 12px; margin-bottom: 18px;
+    }
+    .section-head h2 {
+      font-family: 'Cormorant Garamond', serif; font-size: 12px; font-weight: 600;
+      color: var(--ink3); letter-spacing: 0.12em; text-transform: uppercase;
+      white-space: nowrap;
+    }
+    .section-head .rule {
+      flex: 1; height: 1px;
+      background: linear-gradient(90deg, var(--gold-rule), transparent);
+    }
+    .section-head .subtitle {
+      font-family: 'EB Garamond', serif; font-style: italic;
+      font-size: 12px; color: var(--ink3);
+    }
+
+    /* ── Card grid ──────────────────────────────────────────────────────── */
+    .grid { display: grid; gap: 14px; margin-bottom: 40px; }
+    .grid-3 { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
+    .grid-3-sm { grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
+
+    /* ── Monitor card ───────────────────────────────────────────────────── */
+    .card {
+      background: var(--bg2); border: 1px solid var(--border); border-radius: 4px;
+      padding: 20px; position: relative; overflow: hidden;
+      transition: border-color 0.2s, box-shadow 0.2s;
+      cursor: default;
+    }
+    .card:hover {
+      border-color: var(--gold-rule);
+      box-shadow: 0 2px 12px rgba(168,120,42,0.1);
+    }
+    .card::before {
+      content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+      background: linear-gradient(90deg, var(--gold), var(--gold2), transparent);
+    }
+    .card.alert-low  { border-color: var(--green); box-shadow: 0 2px 14px rgba(61,122,74,0.12); }
+    .card.alert-deal { border-color: var(--gold);  box-shadow: 0 2px 14px rgba(168,120,42,0.12); }
+    .card.award-avail { border-color: var(--gold); box-shadow: 0 2px 14px rgba(168,120,42,0.12); }
+
+    .card-route {
+      display: flex; justify-content: space-between; align-items: flex-start;
+      margin-bottom: 4px;
+    }
+    .route-text {
+      font-family: 'Cormorant Garamond', serif; font-size: 22px;
+      font-weight: 700; color: var(--ink0);
+    }
+    .route-arrow { color: var(--gold3); font-size: 12px; margin: 0 5px; }
+
+    .card-date {
+      font-family: 'Cormorant Garamond', serif; font-size: 11px;
+      color: var(--ink3); letter-spacing: 0.05em; margin-bottom: 10px;
+    }
+    .gold-rule { height: 1px; background: linear-gradient(90deg, var(--gold-rule), transparent); margin-bottom: 10px; }
+
+    .price {
+      font-family: 'Cormorant Garamond', serif; font-size: 30px; font-weight: 700;
+      color: var(--gold); line-height: 1; margin-bottom: 3px;
+    }
+    .price.low   { color: var(--green); }
+    .price.deal  { color: var(--gold); }
+    .price-sub   { font-family: 'Cormorant Garamond', serif; font-size: 11px; color: var(--ink3); margin-bottom: 10px; }
+
+    .card-details {
+      font-family: 'Cormorant Garamond', serif; font-size: 12px;
+      color: var(--ink2); line-height: 1.8; margin-bottom: 10px;
+    }
+
+    .badge {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 1px 8px; border-radius: 2px; font-size: 9px;
+      font-family: 'Cormorant Garamond', serif; font-weight: 700;
+      letter-spacing: 0.08em; text-transform: uppercase;
+      border: 1px solid currentColor;
+    }
+    .badge-low  { color: var(--green);  border-color: var(--green); }
+    .badge-deal { color: var(--gold);   border-color: var(--gold); }
+    .badge-avail { color: var(--gold2); border-color: var(--gold2); }
+    .badge-none  { color: var(--ink3);  border-color: var(--border); }
+
+    .card-provider { font-family: 'Cormorant Garamond', serif; font-size: 10px; color: var(--ink3); letter-spacing: 0.05em; margin-top: 10px; }
+
+    .btn-gold {
+      display: inline-block; margin-top: 12px; padding: 5px 16px;
+      background: linear-gradient(135deg, var(--gold), var(--gold2));
+      color: var(--bg0); border: none; border-radius: 2px; font-size: 12px;
+      font-family: 'Cormorant Garamond', serif; font-weight: 700;
+      letter-spacing: 0.06em; cursor: pointer; text-decoration: none;
+      transition: opacity 0.15s;
+    }
+    .btn-gold:hover { opacity: 0.85; }
+
+    /* ── Runs table ─────────────────────────────────────────────────────── */
+    .table-wrap {
+      background: var(--bg2); border: 1px solid var(--border); border-radius: 4px;
+      overflow-x: auto; position: relative; margin-bottom: 40px;
+    }
+    .table-wrap::before {
+      content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+      background: linear-gradient(90deg, var(--gold), var(--gold2), transparent);
+    }
+    table { width: 100%; border-collapse: collapse; font-family: 'Cormorant Garamond', serif; font-size: 13px; }
+    thead tr { font-size: 10px; color: var(--ink3); letter-spacing: 0.1em; text-transform: uppercase; border-bottom: 1px solid var(--border); }
+    th { text-align: left; padding: 12px 20px; font-weight: 600; }
+    tbody tr { border-bottom: 1px solid rgba(168,120,42,0.06); color: var(--ink2); }
+    tbody tr:last-child { border-bottom: none; }
+    td { padding: 9px 20px; }
+
+    /* ── Footer ─────────────────────────────────────────────────────────── */
+    footer { border-top: 1px solid var(--border); margin-top: 40px; padding: 20px 24px; text-align: center; }
+    footer p { font-family: 'Cormorant Garamond', serif; font-size: 12px; color: var(--ink3); letter-spacing: 0.06em; }
+
+    /* ── Loading ────────────────────────────────────────────────────────── */
+    #loading {
+      text-align: center; padding: 80px 20px;
+      font-family: 'Cormorant Garamond', serif; font-style: italic;
+      font-size: 18px; color: var(--ink3);
+    }
+
+    /* ── Empty state ────────────────────────────────────────────────────── */
+    .empty {
+      padding: 36px 20px; text-align: center;
+      font-family: 'Cormorant Garamond', serif; font-style: italic;
+      color: var(--ink3); font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Nav ──────────────────────────────────────────────────────────────── -->
+<nav>
+  <div class="nav-gold-line"></div>
+  <div class="nav-inner">
+    <a href="#" class="nav-brand">
+      <span>✈</span>
+      <span>FlightTracker</span>
+      <span class="ornament">◆</span>
+    </a>
+    <div class="nav-links">
+      <a href="#cash">Cash Fares</a>
+      <a href="#awards">Awards</a>
+      <a href="#runs">Run History</a>
+    </div>
+  </div>
+</nav>
+
+<!-- ── Main ─────────────────────────────────────────────────────────────── -->
+<main id="app">
+  <div id="loading">Loading flight data ◆</div>
+</main>
+
+<!-- ── Footer ───────────────────────────────────────────────────────────── -->
+<footer>
+  <div style="height:1px;background:linear-gradient(90deg,transparent,var(--gold-rule),transparent);margin-bottom:14px;"></div>
+  <p>FLIGHT TRACKER <span style="color:var(--gold3)">◆</span> YYC · YYZ · ISB · IST · Updated daily</p>
+</footer>
+
+<script>
+// ─────────────────────────────────────────────────────────────────────────────
+// DATA
+// ─────────────────────────────────────────────────────────────────────────────
+
+const CASH_MONITORS = [
+  { id: "yyc-yyz-jul2-window",    origin: "YYC", dest: "YYZ", from: "2026-06-28", to: "2026-07-06",  threshold: 180 },
+  { id: "yyc-yyz-jul13-window",   origin: "YYC", dest: "YYZ", from: "2026-07-09", to: "2026-07-17",  threshold: 180 },
+  { id: "yyc-yyz-jul14-window",   origin: "YYC", dest: "YYZ", from: "2026-07-10", to: "2026-07-18",  threshold: 180 },
+  { id: "yyz-yyc-june-last-week", origin: "YYZ", dest: "YYC", from: "2026-06-24", to: "2026-06-30",  threshold: 180 },
+  { id: "yyz-yyc-may8-window",    origin: "YYZ", dest: "YYC", from: "2026-05-03", to: "2026-05-13",  threshold: 160 },
+  { id: "yyz-yyc-jun10",          origin: "YYZ", dest: "YYC", from: "2026-06-08", to: "2026-06-12",  threshold: 180 },
+  { id: "yyc-yyz-jun13",          origin: "YYC", dest: "YYZ", from: "2026-06-11", to: "2026-06-15",  threshold: 180 },
+];
+
+const AWARD_MONITORS = [
+  { id: "qatar-award-yyz-isb-jun2027", origin: "YYZ", dest: "ISB", label: "Islamabad, Pakistan",           month: "2027-06", cabin: "Business" },
+  { id: "qatar-award-yyz-isb-jul2027", origin: "YYZ", dest: "ISB", label: "Islamabad, Pakistan",           month: "2027-07", cabin: "Business" },
+  { id: "qatar-award-yyz-isb-dec2027", origin: "YYZ", dest: "ISB", label: "Islamabad, Pakistan",           month: "2027-12", cabin: "Business" },
+  { id: "qatar-award-yyz-ist-jun2027", origin: "YYZ", dest: "IST", label: "Istanbul Airport, Turkey",      month: "2027-06", cabin: "Business" },
+  { id: "qatar-award-yyz-ist-jul2027", origin: "YYZ", dest: "IST", label: "Istanbul Airport, Turkey",      month: "2027-07", cabin: "Business" },
+  { id: "qatar-award-yyz-ist-dec2027", origin: "YYZ", dest: "IST", label: "Istanbul Airport, Turkey",      month: "2027-12", cabin: "Business" },
+];
+
+const MONTHS = ["","Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+function fmtMonth(ym) {
+  const [y, m] = ym.split("-");
+  return `${MONTHS[parseInt(m)]} ${y}`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RENDER HELPERS
+// ─────────────────────────────────────────────────────────────────────────────
+
+function sectionHead(title, subtitle) {
+  return `<div class="section-head">
+    <h2>${title}</h2>
+    <div class="rule"></div>
+    ${subtitle ? `<span class="subtitle">${subtitle}</span>` : ""}
+  </div>`;
+}
+
+function renderCashCard(m, data) {
+  const qh      = data.quotes?.[m.id] ?? [];
+  const latest  = qh.length ? qh[qh.length - 1] : null;
+  const best    = data.best_ever?.[m.id] ?? null;
+  const price   = latest?.price ?? null;
+  const isLow   = price !== null && best !== null && price <= best;
+  const isDeal  = price !== null && m.threshold && price < m.threshold && !isLow;
+
+  let badge = "";
+  if (isLow)  badge = `<span class="badge badge-low">✦ Best Ever</span>`;
+  else if (isDeal) badge = `<span class="badge badge-deal">◆ Deal</span>`;
+
+  let priceHtml = `<div class="price" style="color:var(--ink3);font-style:italic">Not yet checked</div>`;
+  if (price !== null) {
+    const cls = isLow ? "low" : "";
+    priceHtml = `<div class="price ${cls}">CAD ${price.toFixed(2)}</div>`;
+  }
+
+  let bestSub = "";
+  if (best !== null && price !== null && !isLow) {
+    bestSub = `<div class="price-sub">All-time best: CAD ${parseFloat(best).toFixed(2)}</div>`;
+  }
+
+  let details = "";
+  if (latest) {
+    details = `<div class="card-details">
+      ✈ ${latest.airline ?? "—"}<br>
+      ⏱ ${latest.duration ?? "N/A"} · ${(latest.stops === 0 || latest.stops === "0") ? "Nonstop" : (latest.stops ?? 1) + " stop(s)"}<br>
+      📅 ${(latest.dep ?? "").substring(0, 10)}
+    </div>`;
+  }
+
+  const cardClass = isLow ? "card alert-low" : isDeal ? "card alert-deal" : "card";
+  return `<div class="${cardClass}">
+    <div class="card-route">
+      <div>
+        <span class="route-text">${m.origin}</span>
+        <span class="route-arrow">→</span>
+        <span class="route-text">${m.dest}</span>
+      </div>
+      ${badge}
+    </div>
+    <div class="card-date">${m.from} — ${m.to}</div>
+    <div class="gold-rule"></div>
+    ${priceHtml}
+    ${bestSub}
+    ${details}
+    <div class="card-provider">${latest?.provider ?? "AWAITING FIRST RUN"}</div>
+  </div>`;
+}
+
+function renderAwardCard(m, data) {
+  const slots   = data.award_slots?.[m.id];
+  const avail   = Array.isArray(slots) && slots.length > 0;
+  const best    = avail ? slots.reduce((a, b) => ((a.points_cost ?? 9e9) <= (b.points_cost ?? 9e9) ? a : b)) : null;
+  const pts     = best?.points_cost;
+  const sur     = best?.cash_surcharge;
+  const cardClass = avail ? "card award-avail" : "card";
+
+  return `<div class="${cardClass}">
+    <div class="card-route">
+      <div>
+        <span class="route-text">${m.origin}</span>
+        <span class="route-arrow">→</span>
+        <span class="route-text">${m.dest}</span>
+      </div>
+      <span class="badge ${avail ? 'badge-avail' : 'badge-none'}">${avail ? "◆ Available" : "Monitoring"}</span>
+    </div>
+    <div class="card-date">${m.label} · ${fmtMonth(m.month)}</div>
+    <div class="gold-rule"></div>
+    ${avail ? `
+      <div class="price" style="font-size:24px;color:var(--gold)">
+        ${pts ? pts.toLocaleString() : "N/A"} <span style="font-size:14px;font-weight:400">Avios</span>
+      </div>
+      ${sur ? `<div class="price-sub">+ CAD ${parseFloat(sur).toFixed(2)} taxes &amp; fees</div>` : ""}
+      <a href="https://www.qatarairways.com/en-ca/privilege-club/redeem-avios.html"
+         target="_blank" rel="noopener" class="btn-gold">Book on Qatar →</a>
+    ` : `<div style="font-family:'EB Garamond',serif;font-style:italic;color:var(--ink3);font-size:13px">No seats found yet.<br>Checked daily.</div>`}
+    <div class="card-provider">Qatar Airways · Privilege Club</div>
+  </div>`;
+}
+
+function renderRunsTable(runs) {
+  if (!runs || !runs.length) {
+    return `<div class="empty">No runs yet. Trigger the GitHub Actions workflow to start.</div>`;
+  }
+  const rows = [...runs].reverse().slice(0, 20).map(r => {
+    const ts = r.timestamp ? new Date(r.timestamp).toLocaleString("en-CA", {
+      timeZone: "America/Toronto", dateStyle: "short", timeStyle: "short"
+    }) : "—";
+    const hasErr = r.errors > 0;
+    return `<tr>
+      <td style="font-weight:700;color:var(--ink3);font-size:11px">${r.run_id ?? "—"}</td>
+      <td>${ts}</td>
+      <td>${r.monitors_done ?? "—"}</td>
+      <td style="color:var(--gold);font-weight:700">${r.cash_quotes ?? 0}</td>
+      <td>${r.award_slots ?? 0}</td>
+      <td style="color:${r.alerts > 0 ? 'var(--green)' : 'var(--ink3)'}">${r.alerts ?? 0}</td>
+      <td style="color:${hasErr ? 'var(--red)' : 'var(--ink3)'}">${r.errors ?? 0}</td>
+      <td><span style="color:var(--amber)">${r.rapidapi_used ?? 0}/10</span></td>
+    </tr>`;
+  }).join("");
+
+  return `<table>
+    <thead><tr>
+      <th>Run ID</th><th>Timestamp (ET)</th><th>Monitors</th>
+      <th>Quotes</th><th>Awards</th><th>Alerts</th><th>Errors</th><th>RapidAPI</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MAIN RENDER
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function render() {
+  let data = {};
+  try {
+    const resp = await fetch("results.json?_=" + Date.now());
+    if (resp.ok) data = await resp.json();
+  } catch (e) {
+    console.warn("Could not load results.json:", e);
+  }
+
+  const lastUpdated  = data.last_updated
+    ? new Date(data.last_updated).toLocaleString("en-CA", {
+        timeZone: "America/Toronto", dateStyle: "medium", timeStyle: "short"
+      })
+    : "Never";
+  const rapidUsed    = data.rapidapi_calls_this_month ?? 0;
+  const rapidColor   = rapidUsed >= 10 ? "red" : rapidUsed >= 7 ? "amber" : "green";
+  const totalRuns    = (data.runs ?? []).length;
+  const latestRun    = data.runs?.length ? data.runs[data.runs.length - 1] : null;
+  const totalAlerts  = (data.runs ?? []).reduce((s, r) => s + (r.alerts ?? 0), 0);
+
+  document.getElementById("app").innerHTML = `
+
+    <!-- Hero -->
+    <div class="hero" id="top">
+      <div class="hero-top-rule"></div>
+      <div class="hero-watermark">✈</div>
+      <h1>Flight Price Tracker</h1>
+      <div class="hero-divider">
+        <div class="line"></div>
+        <span class="diamond">◆</span>
+        <div class="line"></div>
+      </div>
+      <p>YYC · YYZ domestic fares &nbsp;·&nbsp; Qatar Airways award availability</p>
+      <div class="hero-meta">
+        <div class="meta-chip">
+          Last updated <span class="val">${lastUpdated}</span>
+        </div>
+        <div class="meta-chip">
+          Runs <span class="val">${totalRuns}</span>
+        </div>
+        <div class="meta-chip">
+          All-time alerts <span class="val">${totalAlerts}</span>
+        </div>
+        <div class="meta-chip">
+          RapidAPI <span class="val ${rapidColor}">${rapidUsed}/10</span> this month
+        </div>
+        ${latestRun ? `<div class="meta-chip">
+          Latest <span class="val">${latestRun.cash_quotes ?? 0} quotes · ${latestRun.alerts ?? 0} alerts</span>
+        </div>` : ""}
+      </div>
+    </div>
+
+    <!-- Cash Fares -->
+    <section id="cash">
+      ${sectionHead("Cash Fares", "Air Canada · WestJet · Flair")}
+      <div class="grid grid-3">
+        ${CASH_MONITORS.map(m => renderCashCard(m, data)).join("")}
+      </div>
+    </section>
+
+    <!-- Qatar Awards -->
+    <section id="awards">
+      ${sectionHead("Qatar Airways Awards", "Business Class · Privilege Club")}
+      <div class="grid grid-3-sm">
+        ${AWARD_MONITORS.map(m => renderAwardCard(m, data)).join("")}
+      </div>
+    </section>
+
+    <!-- Run History -->
+    <section id="runs">
+      ${sectionHead("Run History", "GitHub Actions · daily 7:17 AM ET")}
+      <div class="table-wrap">
+        ${renderRunsTable(data.runs)}
+      </div>
+    </section>
+
+  `;
+}
+
+render();
+</script>
+</body>
+</html>
