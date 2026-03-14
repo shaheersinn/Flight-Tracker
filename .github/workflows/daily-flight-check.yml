@@ -2,57 +2,99 @@ name: Daily Flight Price Check
 
 on:
   schedule:
-    # 11:17 UTC = 7:17 AM EDT / 6:17 AM EST
-    - cron: "17 11 * * *"
-  workflow_dispatch: # allow manual trigger from GitHub UI
+    - cron: "17 11 * * *"   # 11:17 UTC = 7:17 AM EDT / 6:17 AM EST
+  workflow_dispatch: {}      # manual trigger from Actions tab
 
+# Must be write so the bot can git-push results.json back.
+# Without this the dashboard reads a permanently empty seed file.
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   scrape-and-alert:
     name: Scrape Flights & Send Alerts
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    # ────────────────────────────────────────────────────────────────────────
+    # NO browser. NO Playwright. NO Docker. NO --with-deps.
+    # This script uses only the requests library (pure HTTP).
+    # The libasound2 / Ubuntu 24.04 problem cannot occur here.
+    # ────────────────────────────────────────────────────────────────────────
 
     steps:
+      # ── 1. Checkout ──────────────────────────────────────────────────────
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
-      # ── Python setup ──────────────────────────────────────────────────────
+      # ── 2. Python ────────────────────────────────────────────────────────
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+          cache: pip
 
-      - name: Install Python dependencies
-        working-directory: apps/worker
+      # ── 3. Install dependencies ──────────────────────────────────────────
+      - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Install Playwright browsers
-        working-directory: apps/worker
-        run: python -m playwright install chromium --with-deps
+      # ── 4. Restore history cache ─────────────────────────────────────────
+      # Separate restore + save steps with run_number key forces a fresh
+      # cache entry every run (combined cache@v3 with static key never
+      # overwrites, so history was never persisted across runs).
+      - name: Restore job history cache
+        id: cache-history
+        uses: actions/cache/restore@v4
+        with:
+          path: history.json
+          key: flight-history-${{ runner.os }}-${{ github.run_number }}
+          restore-keys: |
+            flight-history-${{ runner.os }}-
 
-      # ── Run scraper ────────────────────────────────────────────────────────
+      # ── 5. Run scraper ────────────────────────────────────────────────────
       - name: Run flight scraper
-        working-directory: apps/worker
-        run: python scraper.py
         env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          RAPIDAPI_KEY: ${{ secrets.RAPIDAPI_KEY }}
-          SEATS_AERO_API_KEY: ${{ secrets.SEATS_AERO_API_KEY }}
-          DATABASE_SSL: "true"
+          RAPIDAPI_KEY:          ${{ secrets.RAPIDAPI_KEY }}
+          AMADEUS_CLIENT_ID:     ${{ secrets.AMADEUS_CLIENT_ID }}
+          AMADEUS_CLIENT_SECRET: ${{ secrets.AMADEUS_CLIENT_SECRET }}
+          SEATS_AERO_API_KEY:    ${{ secrets.SEATS_AERO_API_KEY }}
+          TELEGRAM_BOT_TOKEN:    ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:      ${{ secrets.TELEGRAM_CHAT_ID }}
+          DASHBOARD_URL:         ${{ secrets.DASHBOARD_URL }}
+          RESULTS_FILE:          results.json
+          HISTORY_FILE:          history.json
+        run: python main.py
 
-      # ── Upload logs ────────────────────────────────────────────────────────
+      # ── 6. Save history cache ─────────────────────────────────────────────
+      - name: Save job history cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: history.json
+          key: flight-history-${{ runner.os }}-${{ github.run_number }}
+
+      # ── 7. Commit results.json back to repo ───────────────────────────────
+      # results.json is the dashboard's data source. Without this step it
+      # is written to the runner disk and immediately discarded — the
+      # dashboard would always read the empty seed file from the repo.
+      # [skip ci] prevents this commit from triggering another run.
+      - name: Commit updated results to repo
+        if: always()
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add results.json || true
+          git diff --cached --quiet || git commit -m "chore: update flight results [skip ci]"
+          git push || true
+
+      # ── 8. Upload logs ────────────────────────────────────────────────────
       - name: Upload scraper logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: scraper-logs-${{ github.run_id }}
-          path: apps/worker/logs/
+          name: flight-logs-${{ github.run_id }}
+          path: logs/
           retention-days: 7
           if-no-files-found: ignore
