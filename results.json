@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-06-18T14:24:45Z",
+  "last_updated": "2026-06-19T14:22:14Z",
   "runs": [
     {
       "run_id": "20260314_123659",
@@ -974,6 +974,16 @@
     {
       "run_id": "20260618_142445",
       "timestamp": "2026-06-18T14:24:45Z",
+      "monitors_done": 13,
+      "cash_quotes": 0,
+      "award_slots": 0,
+      "alerts": 0,
+      "errors": 0,
+      "rapidapi_used": 10
+    },
+    {
+      "run_id": "20260619_142214",
+      "timestamp": "2026-06-19T14:22:14Z",
       "monitors_done": 13,
       "cash_quotes": 0,
       "award_slots": 0,
