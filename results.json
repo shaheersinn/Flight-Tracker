@@ -1,16 +1,6 @@
 {
-  "last_updated": "2026-09-08T15:09:51Z",
+  "last_updated": "2026-09-09T15:08:47Z",
   "runs": [
-    {
-      "run_id": "20260601_164816",
-      "timestamp": "2026-06-01T16:48:16Z",
-      "monitors_done": 13,
-      "cash_quotes": 0,
-      "award_slots": 0,
-      "alerts": 0,
-      "errors": 0,
-      "rapidapi_used": 7
-    },
     {
       "run_id": "20260602_151321",
       "timestamp": "2026-06-02T15:13:21Z",
@@ -994,6 +984,16 @@
     {
       "run_id": "20260908_150951",
       "timestamp": "2026-09-08T15:09:51Z",
+      "monitors_done": 13,
+      "cash_quotes": 0,
+      "award_slots": 0,
+      "alerts": 0,
+      "errors": 0,
+      "rapidapi_used": 10
+    },
+    {
+      "run_id": "20260909_150847",
+      "timestamp": "2026-09-09T15:08:47Z",
       "monitors_done": 13,
       "cash_quotes": 0,
       "award_slots": 0,
